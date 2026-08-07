@@ -1,0 +1,3 @@
+pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple/ 
+
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
