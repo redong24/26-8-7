@@ -1018,6 +1018,12 @@ window.PageReport = (() => {
     const statusText = st.status === 'DRAFT' ? '草稿（未提交）'
       : st.status === 'SUBMITTED' ? '已提交' : st.status === 'ARCHIVED' ? '已归档' : ''
 
+    /* 报告标题不写死：显示当前报告实际选用的模板名（如「过敏原检测报告
+     * 单（食入组）」）。写死「（吸入组）」的问题：护士选了食入组模板，
+     * 屏幕角标是食入组、纸上却印吸入组，临床上这是两种完全不同的检测。
+     * 没选模板（手工逐项填写）时回退到默认标题。 */
+    const tplTitle = (st.template_name || '').trim()
+
     if (template === PRINT_TEMPLATES.CCCH_V2) {
       const genderText = p.gender === 'M' ? '男' : p.gender === 'F' ? '女' : ''
       const ageText = (st.patient_age_snapshot || (p.age_years ? `${p.age_years}岁` : '') || '').toString()
@@ -1030,7 +1036,7 @@ window.PageReport = (() => {
               <div>吉林省儿童医疗中心</div>
               <div>长春市儿童医院</div>
             </div>
-            <div class="ccch2-title">过敏原检测报告单（吸入组）</div>
+            <div class="ccch2-title">${UI.esc(tplTitle || '过敏原检测报告单（吸入组）')}</div>
           </div>
           <div class="ccch2-meta">
             <div><span>姓名：</span>${UI.esc(p.name || '')}</div>
@@ -1072,7 +1078,7 @@ window.PageReport = (() => {
               <div>吉林省儿童医疗中心</div>
               <div>长春市儿童医院</div>
             </div>
-            <div class="ccch-report-title">过敏原检测报告单（食入组）</div>
+            <div class="ccch-report-title">${UI.esc(tplTitle || '过敏原检测报告单（食入组）')}</div>
           </div>
           <div class="ccch-patient-meta">
             <div><span>姓名：</span>${UI.esc(p.name || '')}</div>
