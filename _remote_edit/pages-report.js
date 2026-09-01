@@ -581,7 +581,16 @@ window.PageReport = (() => {
     const printName = (ccch2 && forPrint && ctrl && label)
       ? label
       : r.allergen_name
-    const nameCell = `<div class="spt-cell-name">
+    /* CCCH_V2 打印用 <span> 而不是 <input> 输出名称：
+     * <input> 即使 width:auto 也**不会收缩到内容宽**，而是回落到
+     * 浏览器内置的默认宽度（约 20 字符 ≈ 170px）。名称只有三四个字时，
+     * 输入框右侧留出一大段空白，结果标记被推得老远 ——
+     * 「项目名与结果间隔太大」正是这个原因，在 CSS 里调 gap/列宽治不到根上。
+     * span 是行内内容宽，间隔就只剩 CSS gap 设的那一点。
+     * 打印后 restore 会重渲回屏幕版式，编辑不受影响。 */
+    const nameCell = (ccch2 && forPrint)
+      ? `<div class="spt-cell-name"><span class="spt-name-print">${UI.esc(printName)}</span></div>`
+      : `<div class="spt-cell-name">
         <input class="cell-input spt-name-input" data-f="allergen_name" data-p="${r.position_no}"
                value="${UI.esc(printName)}"
                placeholder="${ctrl ? (r.control_type === 'POSITIVE_CTRL' ? '组胺' : '生理盐水') : '过敏原名称'}">
@@ -1297,7 +1306,12 @@ window.PageReport = (() => {
      * 所以即使没有空项目也必须重渲。反过来 restore 时也必须无条件渲回，
      * 否则 A5 打印后屏幕会一直停在 2 列 —— 屏幕上 2 列是错的版式
      * （纸质单实物是 4 列，护士按屏幕找位置会对不上）。 */
+    /* CCCH_V2 也必须重渲：该模板的格子结构（去序号格、名称用 span、
+     * 空结果补「—」）都在 cellHtml 的 ccch2 分支里，只有 renderTable(true)
+     * 才会走到。此前仅靠 hasEmpty 碰巧为真才重渲 —— 一旦项目全填满，
+     * 打印的就是屏幕版 <input> 结构，CCCH_V2 的紧凑间距根本不生效。 */
     const needRerender = hasEmpty || eff.size === PRINT_SIZES.A5
+      || normalizePrintTemplate(eff.template) === PRINT_TEMPLATES.CCCH_V2
     if (needRerender) renderTable(true)
 
     /* 备注已于 2026-08 按使用方要求移除，这里只剩症状一项。

@@ -874,6 +874,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     line-height:1.42 !important;
     letter-spacing:0;
   }
+  /* CCCH_V2 打印时名称是 <span class="spt-name-print">（见 pages-report.js
+   * cellHtml 的 ccch2 分支）：<input> 收不回内容宽（回落到浏览器默认 ~170px），
+   * 名称与结果之间被撑出一大段空白。span 天然内容宽，
+   * 名称与结果的实际间隔就是上面 .spt-cell 的 gap（20px），不再虚胖。 */
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-name-print {
+    font-size:.9rem;
+    line-height:1.42;
+    white-space:nowrap;
+    color:#000;
+  }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-no,
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-name,
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-res,
