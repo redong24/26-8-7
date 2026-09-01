@@ -579,7 +579,7 @@ window.PageReport = (() => {
     const shownRes = (ccch2 && forPrint && !res.text) ? '—' : res.text
     const noCell = `<div class="spt-cell-no">${ctrl ? (dupLabel ? '' : ctrlLabelHtml(label)) : noText}</div>`
     const printName = (ccch2 && forPrint && ctrl && label)
-      ? `${r.allergen_name || ''}${(r.allergen_name || '').trim() ? '（' + label + '）' : label}`
+      ? label
       : r.allergen_name
     const nameCell = `<div class="spt-cell-name">
         <input class="cell-input spt-name-input" data-f="allergen_name" data-p="${r.position_no}"

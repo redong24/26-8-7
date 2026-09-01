@@ -845,7 +845,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
     order:2;
     justify-content:flex-start;
-    padding-left:.56rem !important;
+    padding-left:.28rem !important;
     font-weight:400 !important;
     font-size:.9rem !important;
     line-height:1.42 !important;
