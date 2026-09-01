@@ -844,7 +844,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     display:flex;
     align-items:center;
     justify-content:flex-start;
-    gap:10px;   /* 名称与结果的间隔。原 20px 用户仍嫌大，2026-09 收紧到 10px */
+    gap:20px;   /* 名称与结果的间隔。2026-09 用户确认 20px 合适 */
     white-space:nowrap;
     padding-right:40px;
     min-width:0;
