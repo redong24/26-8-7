@@ -759,7 +759,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     display:none !important;
   }
   html[data-print-template="CCCH_V2"] .card > div.bg-slate-50 { display:none !important; }
-  html[data-print-template="CCCH_V2"] .print-head { margin-top:-.32rem !important; margin-bottom:.56rem !important; }
+  html[data-print-template="CCCH_V2"] .print-head { margin-top:0 !important; margin-bottom:.56rem !important; }  /* 2026-09 原-.32rem负边距把表头顶出页面，医院名首行被裁 */
   html[data-print-template="CCCH_V2"] .print-foot { margin-top:.52rem !important; }
 
   html[data-print-template="CCCH_V2"] .ccch2-head {
