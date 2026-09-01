@@ -56,14 +56,15 @@ window.PageReport = (() => {
 
   function normalizePrintTemplate(v) {
     if (v === PRINT_TEMPLATES.CCCH_V2) return PRINT_TEMPLATES.CCCH_V2
-    if (v === PRINT_TEMPLATES.CCCH) return PRINT_TEMPLATES.CCCH
+    /* 2026-09 旧模板下线：历史偏好里存的 CCCH 自动迁移到定制模板，
+     * 渲染分支与样式暂保留以兼容存量数据。 */
+    if (v === PRINT_TEMPLATES.CCCH) return PRINT_TEMPLATES.CCCH_V2
     return PRINT_TEMPLATES.STANDARD
   }
 
   function printTemplateLabel(v) {
     const t = normalizePrintTemplate(v)
     if (t === PRINT_TEMPLATES.CCCH_V2) return '长春儿医定制模板'
-    if (t === PRINT_TEMPLATES.CCCH) return '长春儿医模板（旧）'
     return '标准模板'
   }
 
@@ -1216,10 +1217,9 @@ window.PageReport = (() => {
           </div>
           <div>
             <p class="text-xs font-semibold text-slate-500 mb-2">报告单模板</p>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-2 gap-2">
               <button data-tpl="STANDARD" class="btn btn-sm">标准模板</button>
               <button data-tpl="CCCH_V2" class="btn btn-sm">长春儿医定制模板</button>
-              <button data-tpl="CCCH" class="btn btn-sm">长春儿医模板（旧）</button>
             </div>
           </div>
         </div>

@@ -754,9 +754,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     text-rendering: optimizeLegibility;
   }
   html[data-print-template="CCCH_V2"] #patient-section,
-  html[data-print-template="CCCH_V2"] .rp-textareas,
-  html[data-print-template="CCCH_V2"] #photo-section {
+  html[data-print-template="CCCH_V2"] .rp-textareas {
     display:none !important;
+  }
+  /* 2026-09 #photo-section 不再无条件隐藏：用户选"打印照片"时应显示。
+   * 不打印照片时由通用规则 [data-print-photos="0"] #photo-section 隐藏。 */
+  html[data-print-template="CCCH_V2"] #photo-section {
+    border:0 !important;
+    box-shadow:none !important;
+    padding:.3rem 0 0 !important;
+    margin-top:.2rem;
+  }
+  html[data-print-template="CCCH_V2"] #photo-section h3 {
+    font-size:.86rem;
+    color:#000;
+    margin-bottom:.3rem;
   }
   html[data-print-template="CCCH_V2"] .card > div.bg-slate-50 { display:none !important; }
   html[data-print-template="CCCH_V2"] .print-head { margin-top:0 !important; margin-bottom:.56rem !important; }  /* 2026-09 原-.32rem负边距把表头顶出页面，医院名首行被裁 */
