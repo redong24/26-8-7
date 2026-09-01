@@ -748,8 +748,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
 
   /* ==================== 长春儿童医院定制模板（CCCH_V2，纸单1:1） ==================== */
   html[data-print-template="CCCH_V2"] {
-    font-family: "SimSun", "Songti SC", "Noto Serif SC", "Microsoft YaHei", serif;
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
     color:#000 !important;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   html[data-print-template="CCCH_V2"] #patient-section,
   html[data-print-template="CCCH_V2"] .rp-textareas,
@@ -782,14 +784,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   }
   html[data-print-template="CCCH_V2"] .ccch2-hospital {
     text-align:center;
-    font-size:.9rem;
-    line-height:1.26;
+    font-size:.92rem;
+    line-height:1.34;
     font-weight:700;
   }
   html[data-print-template="CCCH_V2"] .ccch2-title {
     text-align:right;
     font-size:1.12rem;
-    line-height:1.2;
+    line-height:1.34;
     letter-spacing:.01em;
     font-weight:700;
   }
@@ -804,8 +806,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   }
   html[data-print-template="CCCH_V2"] .ccch2-meta > div {
     white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    overflow:visible;
+    text-overflow:clip;
+    padding-right:.08rem;
   }
   html[data-print-template="CCCH_V2"] .ccch2-meta .ccch2-remark {
     grid-column:4;
@@ -845,14 +848,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
     order:3;
     justify-content:flex-start;
-    padding-left:.32rem !important;
+    padding-left:.36rem !important;
     font-weight:400 !important;
-    font-size:.86rem !important;
+    font-size:.88rem !important;
+    line-height:1.38 !important;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .cell-input {
-    padding:0 !important;
-    font-size:.86rem !important;
-    line-height:1.32 !important;
+    padding:0 .08rem 0 0 !important;
+    font-size:.88rem !important;
+    line-height:1.4 !important;
+    letter-spacing:0;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-no,
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-name,
