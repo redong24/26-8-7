@@ -61,6 +61,14 @@ window.PageReport = (() => {
     if (v === PRINT_TEMPLATES.CCCH) return PRINT_TEMPLATES.CCCH_V2
     return PRINT_TEMPLATES.STANDARD
   }
+  /** 长春儿医定制模板是给长春市儿童医院定制的：
+   * 其它医院账号不显示该选项，历史偏好里存过也回落到标准模板。
+   * 按登录账号的 hospital_name 判断（同时含"长春"与"儿童"即视为该院，
+   * 以兼容"长春市儿童医院/吉林省儿童医疗中心（长春）"等挂名变体）。 */
+  function canUseCCCHTemplate() {
+    const h = (App.user && App.user.hospital_name || '').trim()
+    return h.includes('长春') && h.includes('儿童')
+  }
 
   function printTemplateLabel(v) {
     const t = normalizePrintTemplate(v)
@@ -85,7 +93,13 @@ window.PageReport = (() => {
       return {
         size: p.size === PRINT_SIZES.A5 ? PRINT_SIZES.A5 : PRINT_SIZES.A4,
         photos: p.photos !== false,
-        template: normalizePrintTemplate(p.template)
+        template: (() => {
+          const t = normalizePrintTemplate(p.template)
+          /* 换账号登录（如厂家演示号切到其它医院）后，
+           * 本机 localStorage 里可能还留着长春儿医的模板偏好，必须回落。 */
+          return (t === PRINT_TEMPLATES.CCCH_V2 && !canUseCCCHTemplate())
+            ? PRINT_TEMPLATES.STANDARD : t
+        })()
       }
     } catch { return def }
   }
@@ -1219,7 +1233,7 @@ window.PageReport = (() => {
             <p class="text-xs font-semibold text-slate-500 mb-2">报告单模板</p>
             <div class="grid grid-cols-2 gap-2">
               <button data-tpl="STANDARD" class="btn btn-sm">标准模板</button>
-              <button data-tpl="CCCH_V2" class="btn btn-sm">长春儿医定制模板</button>
+              ${canUseCCCHTemplate() ? '<button data-tpl="CCCH_V2" class="btn btn-sm">长春儿医定制模板</button>' : ''}
             </div>
           </div>
         </div>
