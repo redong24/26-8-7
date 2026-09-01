@@ -818,6 +818,16 @@ def get_hr():
         })
 
 if __name__ == '__main__':
+    # [2026-08-11 公网卡顿修复] Werkzeug 开发服务器默认 protocol_version=HTTP/1.0,
+    # 每个响应都返回 "Connection: close", 强制客户端为每一个请求重建 TCP+TLS 连接。
+    # 内网 RTT<1ms 时无感; 公网访问 (https://39.183.171.185:8801/max) 每帧要付出
+    # TCP三次握手+TLS握手 ≈ 2~3个RTT (实测 DevTools: Stalled 115ms + 连接 190ms +
+    # SSL 190ms ≈ 500ms/请求)。前端 15fps 的 upload_frame + get_hr/get_openface 轮询
+    # + 3 路 MJPEG 流叠加, 浏览器同域 6 连接配额被建连风暴占满 => 页面基本跑不动。
+    # 修复: 声明 HTTP/1.1 使 Werkzeug 启用 keep-alive 长连接, 握手只发生一次,
+    # 后续请求复用连接 (curl 实测复用后延迟 141ms -> 15ms)。
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"
     # app.run(host='0.0.0.0', port='8801', debug=True, threaded=True, use_reloader=False)
     app.run(host='0.0.0.0', port='8801', debug=True, threaded=True, use_reloader=False, ssl_context='adhoc')
     # app.run(host='0.0.0.0', port='8800', debug=False, use_reloader=False, ssl_context='adhoc')

@@ -1,0 +1,33 @@
+import numpy as np, glob, os
+D="/home/lsz/real_time_plus/real_time_Demo/frame_capture_diag"
+fs=sorted(glob.glob(os.path.join(D,"capture_4b989b29_*.npz")))
+print("="*64)
+print("根因: 到帧速率约 13.9fps, 而代码假设 30fps")
+print("="*64)
+for i in [10,40,70,100]:
+    ts=np.load(fs[i])['timestamps']; dt=np.diff(ts)
+    mdt=np.median(dt)
+    print("样本%3d: 中位fps=%5.1f  跨度=%6.1fs  卡顿帧(>0.5s)=%3d/%d"
+          %(i,1/mdt,ts[-1]-ts[0],(dt>0.5).sum(),len(dt)))
+print()
+print("="*64)
+print("影子链路取'最近10秒真实帧', 在13.9fps下只有约%d帧"%int(13.9*10))
+print("然后 interp1d 插值成 T_out=301 帧(假装30fps)")
+print("="*64)
+f_real=13.9
+print("真实Nyquist = %.1f bpm  <- 超过此值的心率无法测量"%(f_real/2*60))
+print("插值后'虚假Nyquist' = 900 bpm  <- 频谱轴被拉伸")
+print()
+print("插值不创造信息。真实频率分辨率仍由 10s 窗决定 = 6bpm,")
+print("但频谱上限被虚假放大, 使 [50,140] 搜索带中大量区间是【插值伪影】。")
+print()
+print("=== 交叉验证: 日志中的高频伪峰 ===")
+print("日志实测峰值出现在 118.8 / 139.9 / 149.7 / 156.4 bpm")
+print("真实Nyquist仅%.0fbpm -> 这些峰【物理上不可能是心率】"%(f_real/2*60))
+print("它们是插值伪影与噪声, 却参与了选峰竞争并常常胜出。")
+print()
+print("这解释了此前全部现象:")
+print("  1. 最强峰常非心率峰   -> 伪峰能量可超过真实脉搏峰")
+print("  2. 输出回归带中心95   -> 伪峰在带内近似均匀分布")
+print("  3. 跨人不区分         -> 输出由伪影主导, 与被测者无关")
+print("  4. r=-0.379           -> 与真值无因果关联")

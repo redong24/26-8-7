@@ -1,0 +1,1129 @@
+/* ==================================================================
+   心理综合评估 v3 · 样式
+   ------------------------------------------------------------------
+   来源：设计稿《心理综合评估 v3.html》(高保真稿)
+   落地方式：方案 A —— 剥离设计稿自带的顶栏(56px)与左导航(76px)，
+             只取主内容区，嵌入外壳弹窗 .p-body 内。
+
+   命名隔离：所有选择器统一置于 .psy-v3 作用域下，且自定义属性
+   全部使用 --pv3-* 前缀，避免与外壳既有变量冲突。
+   注意：命名仍然隔离，但【色值已不再是两套】——
+
+   [2026-08-21 配色统一] 本稿原先自带一套 v3 设计稿色板
+   （--pv3-cyan #00D4FF / teal #00E5CC / amber #FFB020 /
+     green #3DDC97 / red #FF6B7A，卡片底 rgba(255,255,255,0.0x)），
+   并在此处注明「两套色板并存互不影响」。实际并非互不影响：
+   本面板与另外 4 个弹窗（生理/肌肤/场景/方案，它们统一用外壳
+   .pcard + var(--panel)）会被逐屏比较，自立色板就直接表现为
+   「这个面板的卡片比别的浅/发灰、文字颜色不一样」。
+
+   最终做法：--pv3-* 不再自带色值，【全部改为引用外壳 :root 变量】：
+     --pv3-card   -> var(--panel)     --pv3-card-border -> var(--bd-soft)
+     --pv3-cyan   -> var(--cyan)      --pv3-teal        -> var(--cyan-2)
+     --pv3-amber  -> var(--yellow)    --pv3-green       -> var(--green)
+     --pv3-red    -> var(--red)       文字 -> --white/--gray/--gray-2
+   .pv3-card 本身也与 .pcard 对齐（var(--panel) + var(--bd-soft) + 4px 圆角，
+   无毛玻璃、无装饰投影）。这样本面板、其余弹窗、外壳三者永远同源，
+   改主题只需动外壳 :root 一处，不会再出现单个面板走样。
+
+   踩过的坑（勿重犯）：第一轮曾把卡片改成实色 #2E4A8F→#21376D，
+   依据是「首页面板实测 #294282、卡/底比 1.94」—— 那次测量把面板底图
+   bg-tb.png 的【亮蓝装饰边框】算进了均值。只取内部填充重测后，
+   首页面板卡/底比约 1.13、其余弹窗 .pcard 约 1.17，而那版实色是
+   1.62~2.20，亮了近一倍，反而让本面板比其他弹窗明显更浅。
+   教训：不要自行推算目标色，直接复用外壳既有变量。
+
+   响应式：设计稿用 1920x1080 固定画布 + transform:scale()，
+   本实现按 README「Implementation Notes 第1条」改为响应式流式布局，
+   不缩放，避免文字与图表模糊。
+   ================================================================== */
+
+.psy-v3{
+  /* ---- Design Tokens ----
+     [2026-08-21 第二轮] 这里【全部改为引用外壳 :root 变量】，不再自带色值。
+     理由见下方 .pv3-card 的注释：本面板此前自立色板，导致它和另外 4 个
+     弹窗（生理/肌肤/场景/方案，它们统一用外壳 .pcard + var(--panel)）
+     深浅不一。改为引用后，本面板与其余弹窗、外壳三者永远同源，
+     主题色调整只需改外壳 :root 一处。
+     --pv3-* 名字保留，仅作为「外壳变量的别名」，避免大面积改选择器。 */
+  --pv3-card:var(--panel);              /* = rgba(39,70,133,.28) 与 .pcard 同 */
+  --pv3-card-border:var(--bd-soft);     /* = rgba(0,247,255,.18) 与 .pcard 同 */
+  --pv3-card-border-strong:var(--bd);   /* = rgba(0,247,255,.35) 对应 .pcard.hi */
+  --pv3-divider:rgba(155,255,251,0.16); /* 首页 .divider 用的浅青 */
+  /* 文字阶梯直接引用外壳四档（与 .kv/.pcard h4 等完全一致）：
+       --white #FFFFFF / body #EBEBEB / --gray #B6BCC7 / --gray-2 #6C82A6
+     原先用「白色+alpha」模拟，会被卡片底色透上来而偏蓝灰，那是发灰的一因。 */
+  --pv3-t0:var(--white);
+  --pv3-t1:#EBEBEB;                     /* 外壳 body 正文色 */
+  --pv3-t2:var(--gray);
+  --pv3-t3:var(--gray-2);
+  --pv3-t4:rgba(108,130,166,0.65);      /* 比 --gray-2 再弱一档，外壳无对应量 */
+  --pv3-cyan:var(--cyan);
+  --pv3-teal:var(--cyan-2);
+  --pv3-amber:var(--yellow);
+  --pv3-green:var(--green);
+  --pv3-red:var(--red);
+  --pv3-mono:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+
+  font-family:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  color:var(--pv3-t1);
+  font-feature-settings:'tnum';
+  -webkit-font-smoothing:antialiased;
+
+  display:flex;flex-direction:column;gap:6px;
+
+  /* 高度必须【锁定】而不是只给下限。
+     原先写的是 min-height:100%，只设下限不设上限，于是本容器会随内容
+     无限增高；一旦增高，子级卡片里的 flex:1 / min-height:0 / overflow-y:auto
+     就全部失效 —— 因为这套内部滚动机制要求父级有【确定】高度才能计算，
+     父级高度未定时 flex 项目会退化成按内容撑开。
+     表现就是 DASS-21 的 21 道题把整个面板顶变形（外壳 .p-body 虽然自己
+     是 overflow-y:auto，但它只会让"整页"一起滚，卡片内滚动仍然不生效）。
+     height:100% + max-height:100% 把高度钉在 .p-body 的可用高度上，
+     内部各卡片才能各自滚动，面板整体不再被撑高。 */
+  height:100%;
+  max-height:100%;
+  min-height:0;
+  overflow:hidden;          /* 兜底：任何计算误差都不外溢成整页滚动 */
+}
+
+/* 收回外壳弹窗 .p-body 的默认内边距 (22/28/28)。
+   本面板信息密度高，28px 的留白会挤掉整整一张卡片的高度。
+   用 :has() 只作用于承载本面板的 .p-body，不影响其余 4 个面板；
+   旧浏览器不支持 :has() 时自动退回原内边距，仅稍不紧凑，不会错版。 */
+/* 同时关掉外层的整页滚动：本面板改为"外框固定、卡片内部各自滚动"。
+   若保留 .p-body 的 overflow-y:auto，一点计算误差就会冒出一根整页滚动条，
+   用户滚动它时整个面板（含顶部评分区）都会移动，观感就是"页面被撑高"。
+   min-height:0 是让 .p-body 作为 flex 项目能正确收缩到 .popup 的可用高度。 */
+.p-body:has(> .psy-v3){padding:12px 16px 14px;overflow:hidden;min-height:0;}
+
+/* ---------- 通用卡片 ---------- */
+.psy-v3 .pv3-card{
+  /* 这里是卡片真正生效的背景（--pv3-card 变量在多数卡片上未被引用），
+     只改变量不改这行的话，改动不会体现在界面上。
+
+     [2026-08-21 第二轮修正] 直接复用外壳变量 var(--panel)，
+     即与另外 4 个弹窗(生理/肌肤/场景/方案)的 .pcard 用【同一个值】。
+
+     第一轮我改成了实色 #2E4A8F→#21376D，那是错的，原因记录在此以免重犯：
+     当时测 bg-tb.png 的采样区间把面板那圈【亮蓝装饰边框】算进了均值，
+     得出「首页面板 = #294282、卡/底比 1.94」，于是按这个偏亮的目标去配色。
+     重新只取远离边框的内部填充后，真实数据是：
+       首页面板内部        卡/底比 ≈ 1.13
+       其余4弹窗 .pcard    卡/底比 ≈ 1.17
+       第一轮的实色方案     卡/底比 2.20~1.62   ← 亮了将近一倍
+     所以第一轮之后，心理评估面板的卡片明显比其他弹窗浅 —— 是我改浅的。
+
+     结论：不要再自己推算目标色。外壳 --panel 就是这套 UI 既有的面板底，
+     其余 4 个弹窗一直在用它、且与首页观感一致；psy 复用同一变量，
+     日后主题若变也自动跟随，不会再出现「一个面板和其他面板不一样」。 */
+  background:var(--panel);
+  /* 边框同样复用外壳 --bd-soft，与 .pcard 一致 */
+  border:1px solid var(--bd-soft);
+  /* 圆角对齐 .pcard 的 4px（原 12px 也是本面板独有的一处不一致） */
+  border-radius:4px;
+  /* [2026-08-21] 移除 backdrop-filter:blur(14px)：
+     其余 4 个弹窗的 .pcard 没有毛玻璃，首页 .panel 也没有；
+     且它会为每张卡片创建合成层逐帧模糊采样，本面板卡片多又有 4s 轮询，
+     去掉对滚动流畅度是净收益。
+     [第二轮] box-shadow 的三层投影/内高光同样是本面板独有的装饰，
+     .pcard 只有 .hi 态才带一点发光。这里一并去掉：卡片轮廓改由
+     边框表达，与其他弹窗一致，也不再有「浮起来」的层次差。 */
+  position:relative;
+  padding:10px 14px;
+  overflow:hidden;
+}
+.psy-v3 .pv3-card-title{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:8px;gap:10px;flex-wrap:wrap;
+}
+.psy-v3 .pv3-card-title h3{
+  font-size:14px;font-weight:600;color:#fff;letter-spacing:0.5px;
+  display:flex;align-items:center;gap:8px;margin:0;
+}
+.psy-v3 .pv3-card-title h3::before{
+  content:"";display:inline-block;width:3px;height:14px;border-radius:2px;
+  background:linear-gradient(180deg,var(--pv3-cyan),var(--pv3-teal));
+  box-shadow:0 0 8px rgba(0,247,255,0.6);
+}
+.psy-v3 .pv3-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
+  font-size:11px;letter-spacing:0.4px;white-space:nowrap;
+  background:rgba(0,247,255,0.08);border:1px solid rgba(0,247,255,0.22);color:var(--pv3-teal);
+}
+.psy-v3 .pv3-chip.gray{
+  background:rgba(255,255,255,0.06);border-color:var(--bd-soft);color:var(--pv3-t2);
+}
+
+/* ================= Layer 1 · 结论通栏 ================= */
+.psy-v3 .pv3-summary{
+  display:grid;grid-template-columns:360px 1fr 300px;
+  gap:16px;align-items:center;
+  padding:11px 18px;
+}
+.psy-v3 .pv3-summary::after{
+  content:"";position:absolute;left:0;right:0;top:0;height:1px;
+  background:linear-gradient(90deg, transparent, rgba(0,247,255,0.4), rgba(155,255,251,0.35), transparent);
+}
+.psy-v3 .pv3-score-block{display:flex;align-items:center;gap:16px;}
+.psy-v3 .pv3-score-ring{position:relative;width:70px;height:70px;flex-shrink:0;}
+.psy-v3 .pv3-score-ring .num{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-score-ring .n{font-size:27px;font-weight:600;color:#fff;line-height:1;letter-spacing:-1px;}
+.psy-v3 .pv3-score-ring .d{font-size:9.5px;color:var(--pv3-t3);margin-top:1px;letter-spacing:1px;}
+.psy-v3 .pv3-score-meta{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.psy-v3 .pv3-score-meta .label{font-size:11.5px;color:var(--pv3-t3);letter-spacing:2px;}
+.psy-v3 .pv3-score-meta .title{font-size:16px;font-weight:600;color:#fff;letter-spacing:1px;}
+.psy-v3 .pv3-tag-row{display:flex;gap:8px;flex-wrap:wrap;}
+.psy-v3 .pv3-tag{
+  padding:4px 10px;border-radius:6px;font-size:11.5px;letter-spacing:0.5px;white-space:nowrap;
+  background:rgba(155,255,251,0.10);color:var(--pv3-teal);border:1px solid rgba(155,255,251,0.25);
+}
+.psy-v3 .pv3-tag.calm{background:rgba(0,247,255,0.10);color:var(--pv3-teal);border-color:rgba(0,247,255,0.25);}
+/* 灰标签：用于「尚未接入 / 未测量」这类中性状态。
+   刻意不用青色高亮 —— 高亮色在本面板语义上代表「有结果」。 */
+.psy-v3 .pv3-tag.gray{background:rgba(255,255,255,0.06);color:var(--pv3-t3);border-color:var(--bd-soft);}
+/* 占位文本统一样式（2026-08-12）：把「未接入/未测量」的说明与真实
+   结论在视觉上区分开。真实结论用 --pv3-t1 且字号更大；占位一律降级为
+   次要色 + 常规字重，避免被当成测量结果阅读。 */
+.psy-v3 .pv3-placeholder{
+  color:var(--pv3-t3)!important;font-weight:400!important;
+  font-style:normal;letter-spacing:0;
+}
+
+.psy-v3 .pv3-conclusion{
+  border-left:1px solid var(--pv3-divider);border-right:1px solid var(--pv3-divider);
+  padding-left:18px;padding-right:18px;min-width:0;
+}
+.psy-v3 .pv3-conclusion .kicker{
+  font-size:10.5px;letter-spacing:2px;color:var(--pv3-cyan);margin-bottom:5px;
+  display:flex;align-items:center;gap:8px;
+}
+.psy-v3 .pv3-conclusion .kicker::before{content:"";width:14px;height:1px;background:var(--pv3-cyan);}
+.psy-v3 .pv3-conclusion p{font-size:13.5px;line-height:1.55;color:var(--pv3-t1);text-wrap:pretty;margin:0;}
+.psy-v3 .pv3-conclusion b{
+  color:#fff;font-weight:600;padding:0 2px;
+  background:linear-gradient(180deg,transparent 60%,rgba(0,247,255,0.18) 60%);
+}
+
+.psy-v3 .pv3-dominant{
+  background:linear-gradient(135deg, rgba(0,247,255,0.14), rgba(155,255,251,0.06));
+  border:1px solid rgba(0,247,255,0.35);
+  border-radius:10px;padding:9px 12px;
+  position:relative;overflow:hidden;
+}
+.psy-v3 .pv3-dominant::after{
+  content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,247,255,0.35),transparent 70%);
+  filter:blur(6px);pointer-events:none;
+}
+.psy-v3 .pv3-de-label{font-size:10.5px;letter-spacing:2px;color:var(--pv3-teal);margin-bottom:4px;}
+.psy-v3 .pv3-de-row{display:flex;align-items:baseline;gap:10px;}
+.psy-v3 .pv3-de-name{font-size:18px;font-weight:600;color:#fff;letter-spacing:1px;}
+.psy-v3 .pv3-de-pct{font-family:var(--pv3-mono);font-size:20px;font-weight:600;color:var(--pv3-cyan);letter-spacing:-0.5px;}
+.psy-v3 .pv3-de-meta{display:flex;gap:16px;margin-top:5px;font-size:10.5px;color:var(--pv3-t2);}
+.psy-v3 .pv3-de-meta span b{color:#fff;font-family:var(--pv3-mono);font-weight:500;margin-left:4px;}
+
+/* ================= 左右分栏 66 : 34 ================= */
+.psy-v3 .pv3-split{
+  display:grid;grid-template-columns:minmax(0,66fr) minmax(0,34fr);
+  gap:10px;flex:1;min-height:0;
+}
+.psy-v3 .pv3-col-out,
+.psy-v3 .pv3-col-in{display:flex;flex-direction:column;gap:6px;min-height:0;}
+
+.psy-v3 .pv3-col-label{
+  display:flex;align-items:center;gap:10px;
+  padding:0 2px 1px;font-size:10px;color:var(--pv3-t3);
+  letter-spacing:2px;text-transform:uppercase;font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-col-label .line{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0.1),transparent);}
+.psy-v3 .pv3-col-label .dot{width:5px;height:5px;border-radius:50%;background:#FF5C5C;box-shadow:0 0 6px #FF5C5C;}
+
+/* ================= Layer 2 ================= */
+.psy-v3 .pv3-layer-2{display:grid;grid-template-columns:52fr 48fr;gap:8px;
+  /* 根容器高度锁定后，flex-shrink:0（拒绝压缩）会让本层在小屏上直接溢出，
+     把同栏下方的卡片挤出可视区。改为允许收缩，并给一个 flex-basis 下限，
+     内部各卡片自身已有 min-height:0，不会把内容压成负高度。 */
+  flex:0 1 auto;min-height:0;}
+
+/* 五维画像 */
+.psy-v3 .pv3-portrait-list{display:flex;flex-direction:column;gap:7px;margin-top:1px;}
+.psy-v3 .pv3-p-row{display:grid;grid-template-columns:104px 1fr 40px;align-items:center;gap:12px;}
+.psy-v3 .pv3-p-name{font-size:13px;color:var(--pv3-t1);display:flex;align-items:center;gap:6px;}
+.psy-v3 .pv3-p-name .info{
+  width:13px;height:13px;border-radius:50%;flex-shrink:0;
+  border:1px solid var(--pv3-t4);color:var(--pv3-t3);
+  font-size:9px;display:grid;place-items:center;cursor:help;font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-p-bar-wrap{position:relative;height:20px;}
+.psy-v3 .pv3-p-bar-bg{
+  position:absolute;left:0;top:6px;right:0;height:10px;border-radius:6px;
+  background:rgba(255,255,255,0.08);overflow:hidden;
+}
+.psy-v3 .pv3-p-norm{
+  position:absolute;left:0;top:5px;height:12px;border-radius:6px;
+  background:rgba(255,255,255,0.09);
+  border:1px dashed rgba(255,255,255,0.18);
+}
+.psy-v3 .pv3-p-fill{
+  position:absolute;left:0;top:6px;height:10px;border-radius:6px;
+  background:linear-gradient(90deg, rgba(155,255,251,0.9), rgba(0,247,255,0.95));
+  box-shadow:0 0 14px rgba(0,247,255,0.35);
+  transition:width .5s ease-out;
+}
+.psy-v3 .pv3-p-fill.amber{
+  background:linear-gradient(90deg, rgba(255,212,102,0.85), rgba(255,212,102,0.95));
+  box-shadow:0 0 12px rgba(255,212,102,0.4);
+}
+.psy-v3 .pv3-p-marker-70{
+  position:absolute;left:70%;top:0;bottom:0;width:1px;
+  background:rgba(255,255,255,0.28);
+}
+.psy-v3 .pv3-p-marker-70::before{
+  content:"70";position:absolute;top:-11px;left:-8px;font-size:9px;color:var(--pv3-t3);
+  font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-p-score{
+  font-family:var(--pv3-mono);font-size:15px;font-weight:600;
+  color:#fff;text-align:right;letter-spacing:-0.5px;
+}
+.psy-v3 .pv3-p-score.amber{color:var(--pv3-amber);}
+/* 未测量的维度分数：降级为次要色，避免占位符「—」与真实分数等重 */
+.psy-v3 .pv3-p-score.dim{color:var(--pv3-t3);}
+.psy-v3 .pv3-p-tag-rev{
+  display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,212,102,0.12);color:var(--pv3-amber);
+  border:1px solid rgba(255,212,102,0.3);margin-left:6px;letter-spacing:0.4px;font-weight:500;
+}
+.psy-v3 .pv3-legend-row{
+  display:flex;gap:14px;font-size:10.5px;color:var(--pv3-t3);align-items:center;
+  padding-top:6px;margin-top:4px;border-top:1px dashed rgba(255,255,255,0.06);
+  flex-wrap:wrap;
+}
+.psy-v3 .pv3-legend-row .li{display:flex;align-items:center;gap:6px;}
+.psy-v3 .pv3-sw{width:14px;height:6px;border-radius:2px;flex-shrink:0;}
+.psy-v3 .pv3-sw.cy{background:linear-gradient(90deg,var(--pv3-teal),var(--pv3-cyan));}
+.psy-v3 .pv3-sw.nm{background:rgba(255,255,255,0.09);border:1px dashed rgba(255,255,255,0.28);}
+.psy-v3 .pv3-sw.am{background:linear-gradient(90deg,var(--pv3-amber),#FFD466);}
+.psy-v3 .pv3-formula{font-family:var(--pv3-mono);opacity:.7;}
+
+/* 情绪构成 */
+.psy-v3 .pv3-emo-list{display:flex;flex-direction:column;gap:6px;margin-top:1px;}
+.psy-v3 .pv3-e-row{display:grid;grid-template-columns:66px 1fr 46px;align-items:center;gap:10px;}
+.psy-v3 .pv3-e-name{font-size:13px;color:var(--pv3-t1);}
+.psy-v3 .pv3-e-name.dim{color:var(--pv3-t3);}
+.psy-v3 .pv3-e-bar{height:16px;border-radius:6px;background:rgba(255,255,255,0.08);position:relative;overflow:hidden;}
+.psy-v3 .pv3-e-fill{
+  position:absolute;left:0;top:0;bottom:0;border-radius:6px;
+  display:flex;align-items:center;padding-left:8px;
+  transition:width .4s ease-out;
+}
+.psy-v3 .pv3-e-fill.calm{background:linear-gradient(90deg,rgba(155,255,251,0.9),rgba(0,247,255,0.95));box-shadow:0 0 18px rgba(0,247,255,0.35);}
+.psy-v3 .pv3-e-fill.happy{background:linear-gradient(90deg,rgba(255,212,102,0.8),rgba(255,212,102,0.9));}
+.psy-v3 .pv3-e-fill.sad{background:linear-gradient(90deg,rgba(108,190,255,0.5),rgba(108,130,166,0.7));}
+.psy-v3 .pv3-e-fill.surprise{background:linear-gradient(90deg,rgba(155,255,251,0.4),rgba(0,247,255,0.55));}
+.psy-v3 .pv3-e-fill.anger{background:linear-gradient(90deg,rgba(255,92,92,0.55),rgba(255,92,92,0.7));}
+.psy-v3 .pv3-e-fill.fear{background:linear-gradient(90deg,rgba(255,92,92,0.4),rgba(255,92,92,0.5));}
+/* 新增两类（2026-08-12）：后端 AffectNet-8 有 8 类，原前端只画了 6 类，
+   漏了「厌恶 disgust」与「轻蔑 contempt」。
+   刻意选用低饱和的黄绿/褐紫，与既有 6 色可区分；不复用 anger 的红，
+   避免把「轻蔑」误读成「愤怒」这类语义相近但强度不同的类别。 */
+.psy-v3 .pv3-e-fill.disgust{background:linear-gradient(90deg,rgba(0,225,166,0.45),rgba(0,225,166,0.6));}
+.psy-v3 .pv3-e-fill.contempt{background:linear-gradient(90deg,rgba(255,212,102,0.42),rgba(255,212,102,0.55));}
+/* 情绪列表的占位说明行：没有数据时说明「为什么没有」，
+   而不是留一片空白让用户以为加载坏了。 */
+.psy-v3 .pv3-e-empty{
+  font-size:11.5px;line-height:1.5;color:var(--pv3-t3);
+  margin-top:2px;padding-top:5px;
+  border-top:1px dashed rgba(255,255,255,0.08);
+}
+.psy-v3 .pv3-e-pct{
+  font-family:var(--pv3-mono);font-size:13px;text-align:right;
+  color:#fff;font-weight:500;letter-spacing:-0.3px;
+}
+.psy-v3 .pv3-e-pct.dim{color:var(--pv3-t3);}
+
+/* ================= Layer 3 ================= */
+.psy-v3 .pv3-layer-3{display:grid;grid-template-columns:52fr 48fr;gap:8px;
+  flex:0 1 auto;min-height:0;}   /* 同 layer-2：允许收缩，避免锁高后溢出 */
+
+.psy-v3 .pv3-screen-list{display:flex;flex-direction:column;gap:7px;margin-top:2px;}
+.psy-v3 .pv3-s-row{display:grid;grid-template-columns:170px 1fr 86px;gap:12px;align-items:center;}
+.psy-v3 .pv3-s-name{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.psy-v3 .pv3-s-name .k{font-size:13px;color:#fff;font-weight:500;}
+.psy-v3 .pv3-s-name .d{font-size:10.5px;color:var(--pv3-t3);letter-spacing:0.3px;}
+.psy-v3 .pv3-s-bar{height:8px;background:rgba(255,255,255,0.08);border-radius:5px;position:relative;overflow:hidden;}
+.psy-v3 .pv3-s-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;transition:width .5s ease-out;}
+.psy-v3 .pv3-s-fill.green{background:linear-gradient(90deg,#2fbb7f,#00E1A6);box-shadow:0 0 10px rgba(0,225,166,0.35);}
+.psy-v3 .pv3-s-fill.amber{background:linear-gradient(90deg,#FFD466,#FFD466);box-shadow:0 0 10px rgba(255,212,102,0.35);}
+/* red / gray 两档为 DASS-21 分级新增：重度·极重度用 red，未作答用 gray。
+   原设计稿只有 green/amber，缺档会导致 class 存在但无样式（进度条不显示颜色）。 */
+.psy-v3 .pv3-s-fill.red{background:linear-gradient(90deg,#FF5C5C,#FF5C5C);box-shadow:0 0 10px rgba(255,92,92,0.35);}
+.psy-v3 .pv3-s-fill.gray{background:rgba(255,255,255,0.10);box-shadow:none;}
+.psy-v3 .pv3-s-val{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;}
+.psy-v3 .pv3-s-val .n{font-family:var(--pv3-mono);font-size:16px;color:#fff;font-weight:600;letter-spacing:-0.5px;}
+.psy-v3 .pv3-s-val .lvl{font-size:11px;padding:2px 7px;border-radius:4px;letter-spacing:0.5px;white-space:nowrap;}
+.psy-v3 .pv3-s-val .lvl.green{background:rgba(0,225,166,0.14);color:var(--pv3-teal);border:1px solid rgba(0,225,166,0.3);}
+.psy-v3 .pv3-s-val .lvl.amber{background:rgba(255,212,102,0.14);color:#FFD466;border:1px solid rgba(255,212,102,0.35);}
+.psy-v3 .pv3-s-val .lvl.red{background:rgba(255,92,92,0.15);color:#FF5C5C;border:1px solid rgba(255,92,92,0.38);}
+.psy-v3 .pv3-s-val .lvl.gray{background:rgba(255,255,255,0.06);color:var(--pv3-t3);border:1px solid var(--bd-soft);
+  font-family:var(--pv3-mono);font-size:10px;}
+
+.psy-v3 .pv3-disclaimer{
+  font-size:10px;color:var(--pv3-t3);letter-spacing:0.2px;
+  padding:5px 9px;margin-top:6px;border-radius:6px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+  line-height:1.4;
+}
+.psy-v3 .pv3-disclaimer::before{content:"⚠ ";color:var(--pv3-t3);}
+
+/* ================= 注意与表情行为（2026-08-13 替换情绪时间线）=================
+   左：视线罗盘（注意朝向）  右：AU 强度条（表情行为）
+   原 .pv3-chart / .pv3-chart-legend 已随情绪时间线一并移除 —— 那是写死坐标的
+   静态 SVG，没有数据源。 */
+.psy-v3 .pv3-beh-card{min-height:0;}
+.psy-v3 .pv3-beh-body{
+  display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);
+  gap:14px;align-items:stretch;margin-top:2px;
+}
+
+/* ---- 左：注意朝向罗盘 ---- */
+.psy-v3 .pv3-beh-gaze{display:flex;align-items:center;gap:12px;}
+.psy-v3 .pv3-gaze-compass{
+  position:relative;width:92px;height:92px;flex-shrink:0;
+  border-radius:50%;
+  background:radial-gradient(circle at 50% 50%, rgba(0,247,255,0.07), rgba(0,247,255,0.01) 70%);
+  border:1px solid rgba(0,247,255,0.22);
+}
+.psy-v3 .pv3-gaze-compass .ring{
+  position:absolute;border-radius:50%;border:1px dashed rgba(0,247,255,0.18);
+  left:50%;top:50%;transform:translate(-50%,-50%);
+}
+.psy-v3 .pv3-gaze-compass .ring.outer{width:68px;height:68px;}
+.psy-v3 .pv3-gaze-compass .ring.inner{width:34px;height:34px;border-style:solid;border-color:rgba(0,247,255,0.14);}
+.psy-v3 .pv3-gaze-compass .cross{position:absolute;background:rgba(0,247,255,0.16);}
+.psy-v3 .pv3-gaze-compass .cross.h{left:6px;right:6px;top:50%;height:1px;transform:translateY(-50%);}
+.psy-v3 .pv3-gaze-compass .cross.v{top:6px;bottom:6px;left:50%;width:1px;transform:translateX(-50%);}
+/* 圆点用 transition 而非逐帧 JS 动画：2s 轮询下 CSS 过渡足够顺滑，
+   且不占用主线程（面板里还有 rPPG 波形在跑）。 */
+.psy-v3 .pv3-gaze-compass .gdot{
+  position:absolute;left:50%;top:50%;width:11px;height:11px;border-radius:50%;
+  background:var(--pv3-teal);box-shadow:0 0 12px 2px rgba(155,255,251,0.55);
+  transition:transform .45s cubic-bezier(.25,.8,.3,1);
+}
+.psy-v3 .pv3-gaze-kv{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.psy-v3 .pv3-gaze-kv .st{
+  font-size:11.5px;font-weight:500;color:var(--pv3-t2);margin-bottom:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.psy-v3 .pv3-gaze-kv .st.ok{color:var(--pv3-green);}
+.psy-v3 .pv3-gaze-kv .st.warn{color:var(--pv3-amber);}
+.psy-v3 .pv3-gaze-kv .kv{display:flex;align-items:center;gap:8px;font-size:10.5px;white-space:nowrap;}
+.psy-v3 .pv3-gaze-kv .kv .k{color:var(--pv3-t3);min-width:62px;}
+.psy-v3 .pv3-gaze-kv .kv .v{color:var(--pv3-t1);font-family:var(--pv3-mono);font-size:11px;}
+.psy-v3 .pv3-gaze-kv .kv .v.good{color:var(--pv3-green);}
+.psy-v3 .pv3-gaze-kv .kv .v.mid{color:var(--pv3-amber);}
+.psy-v3 .pv3-gaze-kv .kv .v.bad{color:var(--pv3-red);}
+
+/* ---- 右：表情动作单元 ---- */
+.psy-v3 .pv3-beh-au{display:flex;flex-direction:column;min-width:0;gap:5px;}
+.psy-v3 .pv3-au-head{display:flex;align-items:center;gap:8px;font-size:10.5px;}
+.psy-v3 .pv3-au-head .lb{color:var(--pv3-t3);}
+.psy-v3 .pv3-au-head .dm{
+  color:var(--pv3-cyan);font-weight:500;font-size:11px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.psy-v3 .pv3-au-list{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.psy-v3 .pv3-au-row{display:grid;grid-template-columns:52px minmax(0,1fr) 30px;gap:7px;align-items:center;}
+.psy-v3 .pv3-au-row .nm{
+  font-size:10px;color:var(--pv3-t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.psy-v3 .pv3-au-row .tr{
+  height:5px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;display:block;
+}
+.psy-v3 .pv3-au-row .fl{
+  display:block;height:100%;width:0%;border-radius:3px;
+  background:linear-gradient(90deg,var(--pv3-teal),var(--pv3-cyan));
+  box-shadow:0 0 6px rgba(0,247,255,0.35);
+  transition:width .4s cubic-bezier(.25,.8,.3,1);
+}
+.psy-v3 .pv3-au-row .vl{
+  font-size:10px;color:var(--pv3-t2);font-family:var(--pv3-mono);text-align:right;
+}
+.psy-v3 .pv3-beh-foot{
+  display:flex;align-items:center;gap:10px;margin-top:7px;padding-top:6px;
+  border-top:1px dashed rgba(255,255,255,0.06);
+  font-size:10px;color:var(--pv3-t3);
+}
+.psy-v3 .pv3-beh-foot .rt{margin-left:auto;font-family:var(--pv3-mono);opacity:.8;white-space:nowrap;}
+
+/* ================= AI 结论 ================= */
+/* AI 行吸收左栏的剩余高度；overflow:hidden 防止长文本把左栏顶长
+   （根容器锁定高度后，任何一处溢出都会挤压同栏其它卡片）。 */
+.psy-v3 .pv3-ai-row{flex:1;min-height:0;display:flex;overflow:hidden;}
+.psy-v3 .pv3-ai-card{width:100%;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.psy-v3 .pv3-ai-body{
+  font-size:14px;line-height:1.75;color:var(--pv3-t1);text-wrap:pretty;
+  padding:13px 18px 13px 34px;border-radius:10px;margin-top:1px;
+  background:linear-gradient(180deg, rgba(0,247,255,0.05), rgba(155,255,251,0.02));
+  border:1px solid rgba(0,247,255,0.14);
+  position:relative;flex:1;
+  display:flex;align-items:center;
+  /* 解读文本长度不可控（后续接 LLM 生成），必须自身滚动，
+     否则会把左栏其它卡片挤扁。min-height:0 让 flex 项目可以收缩。 */
+  min-height:0;overflow-y:auto;overscroll-behavior:contain;
+}
+.psy-v3 .pv3-ai-body::-webkit-scrollbar{width:5px;}
+.psy-v3 .pv3-ai-body::-webkit-scrollbar-thumb{background:rgba(0,247,255,0.28);border-radius:3px;}
+.psy-v3 .pv3-ai-body::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);}
+.psy-v3 .pv3-ai-body::before{
+  content:"\201C";position:absolute;left:10px;top:-2px;font-size:48px;color:var(--pv3-cyan);
+  font-family:Georgia,serif;line-height:1;opacity:0.5;
+}
+.psy-v3 .pv3-ai-body p{margin:0;}
+.psy-v3 .pv3-ai-body em{font-style:normal;color:var(--pv3-teal);font-weight:500;}
+.psy-v3 .pv3-ai-body b{
+  color:#fff;font-weight:500;font-family:var(--pv3-mono);
+  background:rgba(0,247,255,0.1);padding:0 5px;border-radius:3px;
+}
+.psy-v3 .pv3-ai-cta{
+  padding:6px 10px;border-radius:8px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+  background:linear-gradient(180deg, rgba(0,247,255,0.08), rgba(155,255,251,0.04));
+  border:1px solid rgba(0,247,255,0.28);
+  transition:all .2s;font-size:11.5px;color:#fff;white-space:nowrap;
+}
+/* :not(.disabled) 是必需的：否则未接入的灰按钮在悬停时依旧上浮、发青光，
+   看起来完全可用 —— 一个「看着能点、点了没反应」的主按钮比灰掉更糟。 */
+.psy-v3 .pv3-ai-cta:not(.disabled):hover{
+  border-color:rgba(0,247,255,0.7);
+  box-shadow:0 0 18px -4px rgba(0,247,255,0.5);
+  transform:translateY(-1px);
+}
+.psy-v3 .pv3-ai-cta.disabled{
+  cursor:not-allowed;opacity:0.5;
+  background:rgba(255,255,255,0.06);
+  border-color:rgba(255,255,255,0.10);
+  color:var(--pv3-t3);box-shadow:none;
+}
+.psy-v3 .pv3-ai-cta .ic{
+  width:20px;height:20px;border-radius:5px;display:grid;place-items:center;
+  background:rgba(0,247,255,0.15);color:var(--pv3-cyan);flex-shrink:0;
+}
+.psy-v3 .pv3-ai-cta .ic svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;}
+.psy-v3 .pv3-ai-cta .lb{font-size:11.5px;font-weight:500;line-height:1.2;}
+
+/* ---- 报告单入口（2026-08-21）----
+   与「生成解读」并列。用绿色（外壳 --green）区分：
+   解读是本栏内容、报告是整份测评输出，两个不同层级的动作
+   同色会让人以为是一组同类按钮。
+   色值仍取自外壳变量，不自造 —— 见本文件头「踩过的坑」。 */
+/* 该标题栏原本只有 1 个按钮，justify-content:space-between 正好把
+   标题推左、按钮推右。现在变成 2 个按钮，space-between 会把三者
+   均匀撒开（解读按钮跑到中间）。故这里让 h3 吃掉剩余空间，
+   两个按钮自然并靠右侧。只作用于 AI 卡片，不影响其它标题栏。 */
+.psy-v3 .pv3-ai-card .pv3-card-title{justify-content:flex-start;gap:8px;}
+.psy-v3 .pv3-ai-card .pv3-card-title h3{flex:1 1 auto;min-width:0;}
+.psy-v3 .pv3-rpt-cta{
+  background:linear-gradient(180deg, rgba(0,225,166,0.10), rgba(0,225,166,0.04));
+  border-color:rgba(0,225,166,0.30);
+}
+.psy-v3 .pv3-rpt-cta:hover{
+  border-color:rgba(0,225,166,0.72);
+  box-shadow:0 0 18px -4px rgba(0,225,166,0.5);
+}
+.psy-v3 .pv3-rpt-cta .ic{
+  background:rgba(0,225,166,0.16);color:var(--pv3-green);
+}
+
+/* ================= 主动式语音任务 ================= */
+.psy-v3 .pv3-col-in > .pv3-card{flex:1;min-height:0;display:flex;flex-direction:column;}
+.psy-v3 .pv3-voice-prompt{
+  padding:12px 14px;border-radius:10px;margin-top:1px;
+  background:linear-gradient(180deg, rgba(0,247,255,0.05), rgba(255,255,255,0.02));
+  border:1px solid rgba(0,247,255,0.18);
+  color:var(--pv3-t2);
+  flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;
+  position:relative;
+  /* 朗读文本（《北风与太阳》139 字）在窄栏里会很高，必须自身滚动，
+     否则会把下方的录音波形和按钮挤出卡片（卡片已 overflow:hidden，
+     被挤出就等于按钮消失、功能不可用）。 */
+  overflow-y:auto;overscroll-behavior:contain;
+  /* [2026-08-13] 文本显示区加高。
+     min-height 不再用 0：用 0 时本区被压到只剩两三行，139 字要滚好几屏，
+     朗读时眼睛要不停追滚动条，实际没法用。这里给一个下限，
+     让它至少能显示大半段文本；超出仍自身滚动，不会外溢。
+     下限值取 150px 是按「42%→52% 卡片高度增量 + 控件区省下的一层」估算，
+     仍留有余量给波形与控件（两者合计约 90px，且都是 flex-shrink:0）。 */
+  min-height:150px;
+}
+.psy-v3 .pv3-voice-prompt::-webkit-scrollbar{width:5px;}
+.psy-v3 .pv3-voice-prompt::-webkit-scrollbar-thumb{background:rgba(0,247,255,0.28);border-radius:3px;}
+.psy-v3 .pv3-voice-prompt .lbl{
+  font-size:10px;letter-spacing:2px;color:var(--pv3-cyan);
+  display:flex;align-items:center;gap:8px;text-transform:uppercase;font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-voice-prompt .lbl::before{content:"";width:14px;height:1px;background:var(--pv3-cyan);}
+.psy-v3 .pv3-voice-prompt .text{
+  font-size:15px;line-height:1.6;color:#fff;font-weight:400;letter-spacing:0.6px;text-wrap:pretty;
+}
+.psy-v3 .pv3-voice-prompt b{color:var(--pv3-cyan);font-weight:500;}
+/* 波形 + 计时 + 录音按钮的容器。
+   这里的 flex-shrink:0 是【故意保留】的（与 pv3-layer-2/3 的处理相反）：
+   本容器装的是功能性控件（录音按钮 46px + 波形 34px + 计时），一旦被压缩，
+   而父卡片现在是 overflow:hidden，被挤出的部分不会产生滚动条而是直接消失，
+   等于录音按钮点不到 —— 功能性失效远比留白紧张严重。
+   本卡片需要的压缩额度已由同卡内的 .pv3-voice-prompt
+   （flex:1 + min-height:0 + overflow-y:auto）承担：朗读文本长了自己滚动，
+   不会波及这里。本容器不是滚动容器，故无需 min-height:0。 */
+.psy-v3 .pv3-voice-body{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;padding:6px 0 2px;position:relative;flex-shrink:0;
+}
+.psy-v3 .pv3-voice-wave{
+  width:100%;height:34px;display:flex;align-items:center;justify-content:center;gap:3px;
+}
+/* 计时 · 录音按钮 · 状态文字 横向一行（2026-08-13）。
+   录音按钮居中，计时靠左、文字靠右：三列用 1fr auto 1fr，
+   保证按钮真正居中而不被左右文字长度带偏（若用 space-between，
+   左右两侧宽度不等时按钮会明显偏移）。 */
+.psy-v3 .pv3-voice-ctrl{
+  width:100%;display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:center;gap:10px;
+}
+.psy-v3 .pv3-voice-ctrl > .pv3-voice-timer{justify-self:start;}
+.psy-v3 .pv3-voice-ctrl > .pv3-mic-btn{justify-self:center;}
+.psy-v3 .pv3-voice-ctrl > .pv3-mic-side{justify-self:end;text-align:right;min-width:0;}
+.psy-v3 .pv3-voice-wave .bar{
+  width:3px;border-radius:2px;
+  background:linear-gradient(180deg,var(--pv3-teal),var(--pv3-cyan));
+  box-shadow:0 0 6px rgba(0,247,255,0.5);
+  opacity:0.85;
+}
+.psy-v3 .pv3-voice-timer{display:flex;align-items:baseline;gap:8px;font-family:var(--pv3-mono);}
+.psy-v3 .pv3-voice-timer .cur{font-size:20px;font-weight:600;color:#fff;letter-spacing:-1px;}
+.psy-v3 .pv3-voice-timer .tot{font-size:12px;color:var(--pv3-t3);}
+.psy-v3 .pv3-voice-btn-row{display:flex;align-items:center;gap:14px;margin-top:0;}
+.psy-v3 .pv3-mic-btn{
+  width:46px;height:46px;border-radius:50%;cursor:pointer;
+  background:radial-gradient(circle at 30% 30%, #FF5C5C, #FF5C5C 60%, #FF5C5C);
+  border:2px solid rgba(255,255,255,0.15);
+  display:grid;place-items:center;
+  box-shadow:0 0 22px rgba(255,92,92,0.5), inset 0 0 10px rgba(255,255,255,0.15);
+  position:relative;transition:transform .2s;flex-shrink:0;
+}
+.psy-v3 .pv3-mic-btn:hover{transform:scale(1.05);}
+/* 脉冲光环【仅在录音中】显示。
+   原实现是无条件常亮动画，导致「待录音」状态看起来也像正在录音 ——
+   录音是有隐私含义的动作，视觉状态必须与真实状态一致。 */
+.psy-v3 .pv3-mic-btn.rec::before,
+.psy-v3 .pv3-mic-btn.rec::after{
+  content:"";position:absolute;border:1.5px solid rgba(255,92,92,0.4);
+  border-radius:50%;inset:-8px;animation:pv3-pulse 2s infinite;pointer-events:none;
+}
+.psy-v3 .pv3-mic-btn.rec::after{inset:-16px;animation-delay:0.6s;}
+/* 录音中：按钮由「圆形麦克风」变为「方形停止」语义，避免用户不确定再点是否会中断 */
+.psy-v3 .pv3-mic-btn.rec{
+  background:radial-gradient(circle at 30% 30%, #FF5C5C, #FF5C5C 60%, #FF5C5C);
+  box-shadow:0 0 26px rgba(255,92,92,0.65), inset 0 0 10px rgba(255,255,255,0.2);
+}
+/* 不可用态（未取到 task_spec / 正在初始化 / 正在上传）：
+   必须明确可见，否则用户会反复点一个不响应的按钮。 */
+.psy-v3 .pv3-mic-btn.disabled{
+  background:radial-gradient(circle at 30% 30%, #6C82A6, #6C82A6 60%, #6C82A6);
+  box-shadow:none;cursor:not-allowed;opacity:0.55;
+}
+.psy-v3 .pv3-mic-btn.disabled:hover{transform:none;}
+@keyframes pv3-pulse{
+  0%{opacity:0.7;transform:scale(0.9);}
+  100%{opacity:0;transform:scale(1.15);}
+}
+.psy-v3 .pv3-mic-btn svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:2;}
+.psy-v3 .pv3-mic-side{font-size:10.5px;color:var(--pv3-t3);letter-spacing:0.5px;line-height:1.45;}
+.psy-v3 .pv3-mic-side .mode{color:var(--pv3-cyan);font-weight:500;}
+/* ---- 录音状态行：一句话说明当前发生了什么 ----
+   录音是有隐私含义、且会失败的操作（权限被拒、设备缺失、音频过短、
+   413 超上限、后端判定 usable=false）。每种情况都必须有明确文案，
+   否则用户只能看到一个没反应的按钮。
+   固定两行高度（max 2 行后省略）：让它不参与高度竞争，
+   避免文案变长时把录音按钮挤出 overflow:hidden 的卡片。 */
+.psy-v3 .pv3-vt-status{
+  flex-shrink:0;margin-top:4px;padding:4px 8px;border-radius:6px;
+  font-size:10.5px;line-height:1.4;letter-spacing:0.3px;
+  background:rgba(255,255,255,0.06);color:var(--pv3-t2);
+  max-height:30px;overflow:hidden;
+}
+.psy-v3 .pv3-vt-status.wait{color:var(--pv3-cyan);}
+.psy-v3 .pv3-vt-status.rec{color:#FF5C5C;background:rgba(255,92,92,0.10);}
+.psy-v3 .pv3-vt-status.ok{color:#00E1A6;background:rgba(0,225,166,0.10);}
+.psy-v3 .pv3-vt-status.warn{color:#FFD466;background:rgba(255,212,102,0.10);}
+.psy-v3 .pv3-vt-status.err{color:#FF5C5C;background:rgba(255,92,92,0.12);}
+
+/* ---- 指标回填区 ----
+   仅在分析成功后填充；未测到的项由 JS 渲染成「—」而非 0。
+   给固定上限并允许滚动：指标条数在元音段(5)与朗读段(5~6)之间变化，
+   不能让它把按钮顶出卡片。 */
+.psy-v3 .pv3-vt-metrics{
+  flex:0 1 auto;min-height:0;overflow-y:auto;margin-top:3px;
+}
+.psy-v3 .pv3-vt-metrics::-webkit-scrollbar{width:4px;}
+.psy-v3 .pv3-vt-metrics::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.14);border-radius:2px;}
+.psy-v3 .pv3-vt-row{
+  display:flex;justify-content:space-between;gap:8px;
+  padding:2px 2px;font-size:10.5px;border-bottom:1px dotted rgba(255,255,255,0.05);
+}
+.psy-v3 .pv3-vt-row .k{color:var(--pv3-t3);white-space:nowrap;}
+.psy-v3 .pv3-vt-row .v{
+  color:var(--pv3-t1);font-family:var(--pv3-mono);text-align:right;
+}
+/* 元音段无朗读文本，用一个大字提示，避免文本区空着显得像加载失败 */
+.psy-v3 .pv3-voice-prompt .text.vowel{
+  font-size:20px;letter-spacing:2px;text-align:center;padding:6px 0;
+  color:var(--pv3-cyan);font-family:var(--pv3-mono);
+}
+
+/* 卡片最末一行的说明文字（10px，flex-wrap 后最多 2 行 ≈ 30px）。
+   flex-shrink:0 安全：它高度本来就由内容决定且极小，且位于卡片最末，
+   不会把任何兄弟元素挤出可视区；真正的压缩额度仍由 .pv3-voice-prompt 承担。
+   语音卡高度预算【重算】（42% × 约 700px ≈ 294px）——
+   2026-08-12 接入真实录音后新增了状态行与指标区：
+     标题 ~24 + 波形/按钮区 ~130 + 状态行 ~30 + 本行 ~30 = 214px，
+   余 ~80px 由「朗读文本区」与「指标区」共同分摊，两者都可滚动
+   （.pv3-voice-prompt 与 .pv3-vt-metrics 均 min-height:0 + overflow-y:auto），
+   因此文本再长或指标再多都只在各自内部出滚动条，不外溢成整页滚动。 */
+.psy-v3 .pv3-voice-hint{
+  display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding-top:6px;margin-top:4px;border-top:1px dashed rgba(255,255,255,0.06);
+  font-size:10px;color:var(--pv3-t3);flex-shrink:0;
+}
+.psy-v3 .pv3-voice-hint b{color:var(--pv3-t1);font-family:var(--pv3-mono);font-weight:500;}
+.psy-v3 .pv3-voice-tabs{display:flex;gap:4px;padding:3px;border-radius:7px;background:rgba(255,255,255,0.06);}
+.psy-v3 .pv3-voice-tabs .t{
+  padding:4px 10px;font-size:11px;border-radius:5px;cursor:pointer;color:var(--pv3-t2);
+  transition:all .18s;white-space:nowrap;
+}
+.psy-v3 .pv3-voice-tabs .t.on{
+  background:rgba(0,247,255,0.18);color:#fff;box-shadow:inset 0 0 0 1px rgba(0,247,255,0.35);
+}
+
+/* ==================================================================
+   心理量表自评 · DASS-21 就地作答（2026-08-12 新增）
+   ------------------------------------------------------------------
+   布局要点：这张卡在右侧窄栏（34fr），要放 21 道题，
+   因此题目列表必须【自身滚动】而不是把整个弹窗撑长 ——
+   卡片用 flex 纵向布局，头部与底部得分固定，中间列表 overflow-y:auto。
+   ================================================================== */
+/* 右栏两张卡（上：主动式语音任务 / 下：本卡）按 45:55 分高度。
+   通用规则 .pv3-col-in > .pv3-card 给的是 flex:1，两卡均分；
+   但语音卡要放录音波形+按钮，需要的固有高度更大，而本卡的题目列表
+   反正是内部滚动，给少一点也能用，所以这里显式压到 45%。
+   flex-basis 用 0 并配 min-height:0：确保高度完全由比例决定，
+   不被 21 道题的内容高度反向撑开（内容撑开正是上一版变形的原因）。 */
+/* [2026-08-13 重分配] 语音卡 42→54，量表卡 58→46。
+   变更依据：量表卡改为「单题模式」后，一次只渲染 1 道题（题干 + 4 选项
+   ≈ 60px），不再需要为 21 道题预留滚动空间，因此可以让出高度；
+   语音卡则要加高朗读文本显示区（《北风与太阳》139 字），需要更多高度。
+   两卡之和仍为 100，不引入第三方变量，避免总高溢出。 */
+.psy-v3 .pv3-col-in > .pv3-card.pv3-dass-card{
+  display:flex;flex-direction:column;
+  flex:46 1 0;min-height:0;overflow:hidden;
+}
+.psy-v3 .pv3-col-in > .pv3-card.pv3-voice-card{flex:54 1 0;min-height:0;overflow:hidden;}
+
+.psy-v3 .pv3-dass-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+  padding:6px 9px;margin-top:2px;border-radius:7px;
+  background:rgba(0,247,255,0.05);border:1px solid rgba(0,247,255,0.16);
+  flex:none;
+}
+.psy-v3 .pv3-dass-meta{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.psy-v3 .pv3-dass-meta .nm{font-size:11.5px;color:#fff;font-weight:500;}
+.psy-v3 .pv3-dass-meta .hint{font-size:9.5px;color:var(--pv3-t3);letter-spacing:0.2px;}
+.psy-v3 .pv3-dass-meta .hint b{color:var(--pv3-cyan);font-weight:500;}
+.psy-v3 .pv3-dass-legend{display:flex;gap:7px;flex-wrap:wrap;}
+.psy-v3 .pv3-dass-legend .lg{
+  display:flex;align-items:center;gap:3px;font-size:9px;color:var(--pv3-t3);white-space:nowrap;}
+.psy-v3 .pv3-dass-legend .lg i{
+  font-style:normal;font-family:var(--pv3-mono);font-size:8.5px;
+  width:12px;height:12px;border-radius:3px;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.06);color:var(--pv3-t2);}
+
+/* ---- 题目列表：内部滚动 ---- */
+.psy-v3 .pv3-dass-list{
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  display:flex;flex-direction:column;gap:3px;
+  margin-top:4px;padding-right:3px;
+}
+.psy-v3 .pv3-dass-list::-webkit-scrollbar{width:5px;}
+.psy-v3 .pv3-dass-list::-webkit-scrollbar-thumb{background:rgba(0,247,255,0.28);border-radius:3px;}
+.psy-v3 .pv3-dass-list::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);}
+
+/* ---- 单题模式（2026-08-13）----
+   .pv3-dass-single 下只显示带 .cur 的那一题，其余 display:none。
+   用 display:none 而不是 visibility/opacity：后两者仍占布局高度，
+   等于没解决「区域过高」这个原始问题。
+   列表本身不再需要滚动（一题装得下），故 overflow 改 hidden 防止
+   出现无意义的滚动条。 */
+.psy-v3 .pv3-dass-list.pv3-dass-single{
+  flex:none;overflow:hidden;gap:0;
+}
+.psy-v3 .pv3-dass-list.pv3-dass-single > .pv3-dass-item{display:none;}
+.psy-v3 .pv3-dass-list.pv3-dass-single > .pv3-dass-item.cur{display:block;}
+/* 单题时可视面积充裕，题干与选项都放大，作答更省力 */
+/* [2026-08-13 步骤2] 题目框加高。
+   单题模式下卡片里只有一道题，原来 10px 的内边距让题目框显得很局促，
+   与下方得分区贴在一起。这里给题目框一个高度下限并加大内边距，
+   让题干和 4 个选项在框内呼吸；min-height 用固定值而非百分比，
+   因为父级是 flex 容器，百分比在此处不可靠。 */
+.psy-v3 .pv3-dass-single .pv3-dass-item{
+  padding:16px 14px 18px;
+  min-height:118px;
+  display:flex;flex-direction:column;justify-content:center;gap:2px;
+}
+.psy-v3 .pv3-dass-single .pv3-dass-q .txt{font-size:13px;line-height:1.5;}
+.psy-v3 .pv3-dass-single .pv3-dass-q .idx{font-size:10px;min-width:17px;height:17px;}
+.psy-v3 .pv3-dass-single .pv3-dass-opts{gap:5px;margin-top:8px;}
+.psy-v3 .pv3-dass-single .pv3-dass-opts .opt{padding:7px 3px;font-size:11px;}
+.psy-v3 .pv3-dass-single .pv3-dass-opts .opt i{font-size:11px;}
+/* ---- 单题导航 ---- */
+.psy-v3 .pv3-dass-nav{
+  flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;
+  margin-top:7px;
+}
+.psy-v3 .pv3-dass-nav .nv{
+  padding:4px 10px;border-radius:5px;cursor:pointer;
+  font-size:10px;font-family:inherit;letter-spacing:0.3px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+  color:var(--pv3-t2);transition:all .18s;white-space:nowrap;
+}
+.psy-v3 .pv3-dass-nav .nv:first-child{justify-self:start;}
+.psy-v3 .pv3-dass-nav .nv:last-child{justify-self:end;}
+.psy-v3 .pv3-dass-nav .nv:hover:not(:disabled){
+  background:rgba(0,247,255,0.12);border-color:rgba(0,247,255,0.35);color:#fff;
+}
+/* 到首/末题时按钮置灰。用 disabled 属性而非隐藏：
+   按钮位置突然消失会让另一个按钮跳位，手指容易点错。 */
+.psy-v3 .pv3-dass-nav .nv:disabled{opacity:0.32;cursor:default;}
+.psy-v3 .pv3-dass-nav .pos{
+  justify-self:center;font-size:10px;color:var(--pv3-t3);font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-dass-nav .pos b{color:var(--pv3-cyan);font-weight:600;font-size:12px;}
+
+.psy-v3 .pv3-dass-item{
+  padding:4px 7px;border-radius:6px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+  transition:background .18s,border-color .18s;
+}
+.psy-v3 .pv3-dass-item:hover{border-color:rgba(0,247,255,0.22);}
+/* 已作答：左侧加一条绿色标识，扫一眼就能看出哪些还没答 */
+.psy-v3 .pv3-dass-item.answered{
+  background:rgba(0,225,166,0.045);border-color:rgba(0,225,166,0.20);
+  box-shadow:inset 2px 0 0 rgba(0,225,166,0.55);
+}
+.psy-v3 .pv3-dass-q{display:flex;gap:6px;align-items:flex-start;}
+.psy-v3 .pv3-dass-q .idx{
+  flex:none;font-family:var(--pv3-mono);font-size:9px;color:var(--pv3-t3);
+  min-width:15px;height:15px;padding:0 3px;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,0.06);margin-top:1px;
+}
+.psy-v3 .pv3-dass-item.answered .pv3-dass-q .idx{background:rgba(0,225,166,0.18);color:var(--pv3-teal);}
+.psy-v3 .pv3-dass-q .txt{font-size:11px;line-height:1.35;color:var(--pv3-t1);text-wrap:pretty;}
+
+/* ---- 4 个选项按钮：等宽铺满，点击区域尽量大以便快速作答 ---- */
+.psy-v3 .pv3-dass-opts{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-top:3px;}
+.psy-v3 .pv3-dass-opts .opt{
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  padding:3px 2px;border-radius:5px;cursor:pointer;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+  color:var(--pv3-t2);font-size:10px;font-family:inherit;line-height:1.1;
+  transition:all .15s;
+}
+.psy-v3 .pv3-dass-opts .opt i{
+  font-style:normal;font-family:var(--pv3-mono);font-size:10px;color:var(--pv3-t3);font-weight:600;}
+.psy-v3 .pv3-dass-opts .opt:hover{
+  background:rgba(0,247,255,0.10);border-color:rgba(0,247,255,0.35);color:#fff;}
+.psy-v3 .pv3-dass-opts .opt.on{
+  background:linear-gradient(180deg,rgba(155,255,251,0.28),rgba(0,247,255,0.20));
+  border-color:rgba(0,247,255,0.62);color:#fff;font-weight:500;
+  box-shadow:0 0 10px -2px rgba(0,247,255,0.5);
+}
+.psy-v3 .pv3-dass-opts .opt.on i{color:#fff;}
+
+/* ---- 底部实时得分 ---- */
+/* [2026-08-13 步骤2] 得分区向下移动。
+   用 margin-top:auto 而不是写死一个 margin-top 数值：卡片是 flex 列容器，
+   auto 会把本块推到底部并吸收全部剩余空间，于是得分区与上方题目/导航之间
+   自然拉开距离，且在不同窗口高度下都贴着卡片底边，不会因为题干长短
+   （21 道题字数不一）而上下漂移。写死数值则只在某一个特定高度下好看。 */
+.psy-v3 .pv3-dass-foot{flex:none;margin-top:auto;padding-top:10px;}
+.psy-v3 .pv3-dass-scores{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+.psy-v3 .pv3-dass-scores .sc{
+  display:flex;align-items:baseline;justify-content:center;gap:4px;flex-wrap:wrap;
+  padding:5px 4px;border-radius:6px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+}
+.psy-v3 .pv3-dass-scores .sc .lb{font-size:10px;color:var(--pv3-t2);}
+.psy-v3 .pv3-dass-scores .sc .vv{
+  font-family:var(--pv3-mono);font-size:15px;font-weight:600;color:#fff;letter-spacing:-0.5px;}
+.psy-v3 .pv3-dass-scores .sc .lv{font-size:9px;letter-spacing:0.3px;}
+/* 未答满的维度：数值位显示 n/7 进度，视觉上明显弱化，
+   避免与真实得分混淆（把进度误读成分数是很容易发生的） */
+.psy-v3 .pv3-dass-scores .sc.pending{border-style:dashed;border-color:rgba(255,255,255,0.10);}
+.psy-v3 .pv3-dass-scores .sc.pending .vv{font-size:11px;color:var(--pv3-t3);font-weight:500;}
+.psy-v3 .pv3-dass-scores .sc.green{background:rgba(0,225,166,0.09);border-color:rgba(0,225,166,0.26);}
+.psy-v3 .pv3-dass-scores .sc.green .lv{color:var(--pv3-teal);}
+.psy-v3 .pv3-dass-scores .sc.amber{background:rgba(255,212,102,0.09);border-color:rgba(255,212,102,0.30);}
+.psy-v3 .pv3-dass-scores .sc.amber .lv{color:#FFD466;}
+.psy-v3 .pv3-dass-scores .sc.red{background:rgba(255,92,92,0.10);border-color:rgba(255,92,92,0.32);}
+.psy-v3 .pv3-dass-scores .sc.red .lv{color:#FF5C5C;}
+
+.psy-v3 .pv3-dass-actions{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px;}
+.psy-v3 .pv3-dass-note{font-size:9px;color:var(--pv3-t3);letter-spacing:0.2px;}
+.psy-v3 .pv3-dass-reset{
+  flex:none;padding:3px 9px;border-radius:5px;cursor:pointer;
+  font-size:9.5px;font-family:inherit;letter-spacing:0.3px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);color:var(--pv3-t3);
+  transition:all .18s;
+}
+.psy-v3 .pv3-dass-reset:hover{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.32);color:#FF5C5C;}
+.psy-v3 .pv3-chip.done{background:rgba(0,225,166,0.16);color:var(--pv3-teal);border-color:rgba(0,225,166,0.32);}
+
+/* ================= 心理量表自评（旧版入口列表样式，保留备用） ================= */
+.psy-v3 .pv3-scale-list{display:flex;flex-direction:column;gap:6px;margin-top:1px;flex:1;}
+.psy-v3 .pv3-scale-item{
+  display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;
+  padding:8px 12px;border-radius:8px;cursor:pointer;
+  background:rgba(255,255,255,0.06);border:1px solid var(--bd-soft);
+  transition:all .18s;
+}
+.psy-v3 .pv3-scale-item:hover{background:rgba(0,247,255,0.06);border-color:rgba(0,247,255,0.28);}
+.psy-v3 .pv3-scale-item.done{background:rgba(0,225,166,0.06);border-color:rgba(0,225,166,0.22);}
+.psy-v3 .pv3-scale-info .k{font-size:12.5px;color:#fff;font-weight:500;}
+.psy-v3 .pv3-scale-info .d{font-size:9.5px;color:var(--pv3-t3);letter-spacing:0.3px;margin-top:1px;}
+.psy-v3 .pv3-scale-badge{
+  font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.4px;white-space:nowrap;
+  background:rgba(255,255,255,0.06);color:var(--pv3-t2);border:1px solid var(--bd-soft);
+  font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-scale-badge.done{background:rgba(0,225,166,0.14);color:var(--pv3-teal);border-color:rgba(0,225,166,0.3);}
+.psy-v3 .pv3-scale-arrow{color:var(--pv3-t3);font-size:14px;transition:transform .2s;}
+.psy-v3 .pv3-scale-item:hover .pv3-scale-arrow{color:var(--pv3-cyan);transform:translateX(3px);}
+.psy-v3 .pv3-scale-footer{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:7px 10px;margin-top:5px;border-radius:8px;
+  background:linear-gradient(180deg, rgba(0,247,255,0.08), rgba(155,255,251,0.03));
+  border:1px solid rgba(0,247,255,0.25);
+  cursor:pointer;transition:all .2s;
+}
+.psy-v3 .pv3-scale-footer:hover{box-shadow:0 0 20px -6px rgba(0,247,255,0.5);}
+.psy-v3 .pv3-scale-footer .lb{font-size:12px;color:#fff;font-weight:500;}
+.psy-v3 .pv3-scale-footer .sb{font-size:9.5px;color:var(--pv3-t3);margin-top:1px;letter-spacing:0.3px;}
+.psy-v3 .pv3-scale-footer .btn{
+  padding:5px 13px;border-radius:6px;font-size:11.5px;white-space:nowrap;
+  background:linear-gradient(180deg,var(--pv3-teal),var(--pv3-cyan));color:#003040;font-weight:600;
+  letter-spacing:0.5px;
+}
+
+/* ================= 底部信息条 ================= */
+.psy-v3 .pv3-footer{
+  text-align:center;font-size:10px;color:var(--pv3-t3);
+  letter-spacing:1px;padding:0;
+  display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.psy-v3 .pv3-footer .dot{width:3px;height:3px;border-radius:50%;background:var(--pv3-t4);flex-shrink:0;}
+.psy-v3 .pv3-footer .v{font-family:var(--pv3-mono);color:var(--pv3-t2);}
+
+/* ==================================================================
+   响应式降级
+   设计稿基于 1920 宽。弹窗实际可用宽 = 视口 - 96(导航)，
+   故断点按弹窗内容宽推算，逐级降级避免挤压。
+   ================================================================== */
+
+/* 结论通栏：三栏 -> 上下两段 */
+@media (max-width:1500px){
+  .psy-v3 .pv3-summary{grid-template-columns:320px 1fr;grid-template-areas:"score concl" "dom dom";}
+  .psy-v3 .pv3-summary > .pv3-score-block{grid-area:score;}
+  .psy-v3 .pv3-summary > .pv3-conclusion{grid-area:concl;}
+  .psy-v3 .pv3-summary > .pv3-dominant{grid-area:dom;}
+  .psy-v3 .pv3-conclusion{border-right:none;padding-right:0;}
+}
+
+/* 右栏折叠到下方（README Implementation Notes 第1条） */
+@media (max-width:1200px){
+  .psy-v3 .pv3-split{grid-template-columns:minmax(0,1fr);}
+  .psy-v3 .pv3-layer-2,
+  .psy-v3 .pv3-layer-3{grid-template-columns:minmax(0,1fr);}
+  .psy-v3 .pv3-ai-row{min-height:200px;}
+}
+
+@media (max-width:820px){
+  .psy-v3 .pv3-summary{grid-template-columns:minmax(0,1fr);grid-template-areas:"score" "concl" "dom";}
+  .psy-v3 .pv3-conclusion{border-left:none;padding-left:0;}
+  .psy-v3 .pv3-p-row{grid-template-columns:92px 1fr 38px;gap:10px;}
+  .psy-v3 .pv3-s-row{grid-template-columns:130px 1fr 78px;gap:10px;}
+  .psy-v3 .pv3-ai-body{padding:18px 16px 18px 34px;font-size:14px;}
+}
+
+/* ==================================================================
+   按「视口高度」降级 —— 本次布局优化的核心
+   ------------------------------------------------------------------
+   问题：面板固有高度约 912px，加上外壳顶栏(70) + 弹窗内边距与底栏
+   后，在矮视口会溢出并出现滚动条。滚动本身就是要避免的状态。
+   注：标题带 .p-head(58px) 已于 2026-08-12 移除，弹窗外壳开销由
+   182px 降至 128px（顶栏70 + 内边距26 + 底栏32），所需视口 912→858px，
+   本组断点因此变为更宽裕的安全垫，予以保留。
+
+   思路：与其让它滚动，不如让它「装得下」。矮屏时按重要性依次压缩
+   非信息性空间（图表高度、行距、内边距、装饰字号），
+   数值与结论文字始终保持可读，不触碰任何数据。
+   ================================================================== */
+
+/* 常见笔记本：1920x1080 全屏(视口约 940) 已可容纳，此档做预防性收紧 */
+@media (max-height:940px){
+  .psy-v3 .pv3-gaze-compass{width:84px;height:84px;}
+  .psy-v3 .pv3-gaze-compass .ring.outer{width:62px;height:62px;}
+  .psy-v3 .pv3-gaze-compass .ring.inner{width:31px;height:31px;}
+  .psy-v3 .pv3-ai-body{font-size:13.5px;line-height:1.65;padding:11px 16px 11px 32px;}
+  .psy-v3 .pv3-voice-prompt .text{font-size:14px;}
+}
+
+/* 1600x900 / 带书签栏的 1080p */
+@media (max-height:880px){
+  .psy-v3{gap:5px;}
+  .p-body:has(> .psy-v3){padding:10px 14px 12px;}
+  .psy-v3 .pv3-card{padding:8px 12px;}
+  .psy-v3 .pv3-card-title{margin-bottom:6px;}
+  .psy-v3 .pv3-summary{padding:9px 16px;}
+  .psy-v3 .pv3-score-ring{width:62px;height:62px;}
+  .psy-v3 .pv3-score-ring .n{font-size:24px;}
+  .psy-v3 .pv3-gaze-compass{width:74px;height:74px;}
+  .psy-v3 .pv3-gaze-compass .ring.outer{width:55px;height:55px;}
+  .psy-v3 .pv3-gaze-compass .ring.inner{width:27px;height:27px;}
+  .psy-v3 .pv3-beh-body{gap:11px;}
+  .psy-v3 .pv3-au-row{grid-template-columns:48px minmax(0,1fr) 30px;}
+  .psy-v3 .pv3-portrait-list{gap:5px;}
+  .psy-v3 .pv3-p-bar-wrap{height:18px;}
+  .psy-v3 .pv3-emo-list{gap:5px;}
+  .psy-v3 .pv3-e-bar{height:15px;}
+  .psy-v3 .pv3-screen-list{gap:5px;}
+  .psy-v3 .pv3-scale-item{padding:6px 12px;}
+  .psy-v3 .pv3-voice-wave{height:28px;}
+  .psy-v3 .pv3-ai-body{font-size:13px;line-height:1.55;padding:9px 14px 9px 30px;}
+  .psy-v3 .pv3-ai-body::before{font-size:38px;}
+}
+
+/* 1366x768 等小笔记本：进一步收紧，并允许纵向滚动兜底 */
+@media (max-height:800px){
+  .psy-v3 .pv3-gaze-compass{width:66px;height:66px;}
+  .psy-v3 .pv3-gaze-compass .ring.outer{width:49px;height:49px;}
+  .psy-v3 .pv3-gaze-compass .ring.inner{width:24px;height:24px;}
+  .psy-v3 .pv3-gaze-compass .gdot{width:9px;height:9px;}
+  .psy-v3 .pv3-beh-gaze{gap:9px;}
+  .psy-v3 .pv3-au-list{gap:3px;}
+  .psy-v3 .pv3-mic-btn{width:40px;height:40px;}
+  .psy-v3 .pv3-mic-btn svg{width:17px;height:17px;}
+  .psy-v3 .pv3-voice-timer .cur{font-size:18px;}
+  .psy-v3 .pv3-voice-prompt{padding:10px 12px;}
+  .psy-v3 .pv3-voice-prompt .text{font-size:13.5px;line-height:1.5;}
+  .psy-v3 .pv3-scale-info .d{display:none;}   /* 隐藏"10题·约2min"副标题，保留量表名 */
+  .psy-v3 .pv3-legend-row .pv3-formula{display:none;} /* 公式已在 ⓘ tooltip 中，此处可省 */
+  /* DASS-21 作答区在小屏收紧：题干与选项都压一档，
+     但选项按钮的点击高度保持 >=20px，否则难点中。 */
+  .psy-v3 .pv3-dass-item{padding:5px 7px;}
+  .psy-v3 .pv3-dass-q .txt{font-size:11px;line-height:1.4;}
+  .psy-v3 .pv3-dass-opts{gap:3px;margin-top:4px;}
+  .psy-v3 .pv3-dass-opts .opt{padding:3px 2px;font-size:9.5px;}
+  .psy-v3 .pv3-dass-legend{display:none;}  /* 选项按钮上已带 0~3 数字，图例可省 */
+  .psy-v3 .pv3-dass-scores .sc .vv{font-size:13px;}
+}
+
+/* ================= 采集完成度条（2026-08-13 新增）=================
+   位于五维画像卡片内部（不是独立卡片）—— pv3-layer-2 是 52fr/48fr
+   两列网格，第三个卡片会换行到第二行并顶开锁定的高度预算。
+   接 /portrait/readiness，渲染在 static/portrait_view.js。
+
+   高度纪律：本条整体压在 ~86px 以内（3 行清单 + 1 行控件 + 1 行说明），
+   因为 .psy-v3 根容器高度是锁定的（height+max-height:100% + overflow:hidden），
+   任何超出都不会产生滚动条而是直接消失。故清单行用 18px 定高、
+   说明行限制为单行省略。 */
+.psy-v3 .pv3-ready-strip{
+  margin-top:7px;padding-top:6px;
+  border-top:1px dashed rgba(255,255,255,0.07);
+  display:flex;flex-direction:column;gap:4px;min-height:0;
+}
+.psy-v3 .pv3-ck-list{display:flex;flex-direction:column;gap:2px;min-height:0;}
+.psy-v3 .pv3-ck-row{
+  display:grid;grid-template-columns:14px minmax(0,1fr);gap:6px;
+  align-items:center;height:18px;
+}
+.psy-v3 .pv3-ck-row .ic{
+  font-size:10px;line-height:1;text-align:center;
+  color:var(--pv3-t4);font-family:var(--pv3-mono);
+}
+.psy-v3 .pv3-ck-row.ok .ic{color:var(--pv3-green);}
+/* 已完成用绿勾，未完成用空心圈 —— 不用红色：未完成不是错误状态，
+   三项本可按任意顺序做，标红会让正常的中间态看起来像故障。 */
+.psy-v3 .pv3-ck-row .tx{
+  display:flex;align-items:baseline;gap:6px;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.psy-v3 .pv3-ck-row .tx b{font-size:11.5px;font-weight:500;color:var(--pv3-t2);flex-shrink:0;}
+.psy-v3 .pv3-ck-row.ok .tx b{color:var(--pv3-t1);}
+.psy-v3 .pv3-ck-row .tx i{
+  font-style:normal;font-size:10px;color:var(--pv3-t3);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.psy-v3 .pv3-ck-empty{font-size:10.5px;color:var(--pv3-t3);padding:4px 0;}
+
+.psy-v3 .pv3-ready-bar{display:flex;align-items:center;gap:8px;margin-top:1px;}
+.psy-v3 .pv3-ready-bar .rt{
+  margin-left:auto;font-family:var(--pv3-mono);font-size:10px;
+  color:var(--pv3-t3);white-space:nowrap;
+}
+.psy-v3 .pv3-ready-bar .rt.ok{color:var(--pv3-teal);}
+.psy-v3 .pv3-ready-btn{
+  flex:none;padding:3px 10px;border-radius:5px;cursor:pointer;
+  font-size:10px;font-family:inherit;letter-spacing:0.3px;
+  background:rgba(0,247,255,0.10);border:1px solid rgba(0,247,255,0.30);
+  color:var(--pv3-teal);transition:all .18s;
+}
+.psy-v3 .pv3-ready-btn:hover:not(:disabled){
+  background:rgba(0,247,255,0.18);border-color:rgba(0,247,255,0.5);color:var(--pv3-teal);
+}
+.psy-v3 .pv3-ready-btn:disabled{opacity:.45;cursor:default;}
+/* chip 的 ok 档位：原样式表只有 gray / done，
+   portrait_view.js 在三项齐备时会写入 ok，缺档会导致 class 存在但无样式。 */
+.psy-v3 .pv3-chip.ok{background:rgba(0,225,166,0.16);color:var(--pv3-teal);border-color:rgba(0,225,166,0.32);}
+.psy-v3 .pv3-ready-note{
+  font-size:9.5px;color:var(--pv3-t3);line-height:1.35;
+  max-height:26px;overflow:hidden;
+}
+
+/* ===== AI 综合解读：真实内容态（2026-08-21 接入 LLM 后新增）=========
+   占位态只有一两段短文本，居中显示没问题；接入真实解读后内容变成
+   「概述 + 要点列表 + 局限说明 + 署名」四段，垂直居中会让长文本在
+   滚动时头部被裁掉。故有真实内容时改为顶部对齐、纵向排布。 */
+.psy-v3 .pv3-ai-body:has(.pv3-ai-points),
+.psy-v3 .pv3-ai-body:has(.pv3-ai-meta){
+  display:block;align-items:stretch;
+}
+.psy-v3 .pv3-ai-body .pv3-ai-points{
+  margin:8px 0 0;padding-left:18px;
+}
+.psy-v3 .pv3-ai-body .pv3-ai-points li{
+  margin:4px 0;line-height:1.7;
+}
+.psy-v3 .pv3-ai-body .pv3-ai-points li::marker{
+  color:var(--pv3-cyan);
+}
+/* 署名行：明确告知这段话由模型生成而非系统实测。
+   刻意用更小字号 + 上分隔线，与正文在视觉上分层，但不隐藏。 */
+.psy-v3 .pv3-ai-body .pv3-ai-meta{
+  margin-top:10px;padding-top:8px;font-size:11px;
+  border-top:1px solid rgba(0,247,255,0.12);
+}

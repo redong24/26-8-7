@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ai_view.js 浏览器行为测试</title>
+<!--
+  =========================================================================
+  ai_view.js 的真实浏览器行为测试（非静态断言）
+  =========================================================================
+  为什么需要它：
+    此前对这个模块的验证全是「grep 源码里有没有某个标识符」式的静态断言。
+    那种断言恰恰抓不住本次修复的那个 bug —— 旧实现的 setInterval 自轮询
+    在源码层面看毫无异常（标识符、路由、类名一应俱全），问题只在
+    「面板 DOM 被外壳反复重建」这个运行时事实里才暴露。
+    所以这里加载【真实的 ai_view.js】，用 mock 的 fetch 与 DOM 复现外壳的
+    生命周期，断言的是行为而不是文本。
+
+  隔离手段：
+    * fetch 全量 mock，绝不真的打后端，也绝不真的调模型（模型调用计费）
+    * setInterval 按 SPEEDUP 压缩，4s 的轮询在测试里是 80ms，整套秒级跑完
+    * 不引入任何测试框架，纯原生 —— 与项目其余部分一致，无需构建步骤
+
+  结果以 "TEST_RESULT <PASS|FAIL> <name>" 逐行打到 console，
+  末尾打 "TEST_SUMMARY"，由 Playwright 捕获。
+  ========================================================================= -->
+<style>
+  body{font-family:monospace;background:#0b1020;color:#cfe;padding:16px;}
+  .pass{color:#4ade80;} .fail{color:#f87171;font-weight:bold;}
+  h2{color:#67e8f9;margin:18px 0 6px;font-size:14px;}
+  #log{white-space:pre-wrap;line-height:1.6;font-size:12.5px;}
+</style>
+</head>
+<body>
+<h1 style="font-size:15px;color:#67e8f9;">ai_view.js 浏览器行为测试</h1>
+<div id="log"></div>
+
+<!-- 面板挂载点。结构与 shell_panels.js 的 AI 卡片一致（只保留脚本消费的锚点）。 -->
+<div id="panel-host"></div>
+
+<script>
+/* ===================================================================
+   1) 测试脚手架
+   =================================================================== */
+var SPEEDUP = 50;                 // 4000ms 轮询 -> 80ms
+var results = [];
+var logEl = document.getElementById('log');
+
+function say(cls, text){
+  var d = document.createElement('div');
+  d.className = cls; d.textContent = text; logEl.appendChild(d);
+}
+function section(t){ 
+  var h = document.createElement('h2'); h.textContent = t; logEl.appendChild(h);
+  console.log('TEST_SECTION ' + t);
+}
+function chk(cond, name, detail){
+  results.push({ok:!!cond, name:name});
+  console.log('TEST_RESULT ' + (cond ? 'PASS' : 'FAIL') + ' ' + name
+              + (detail && !cond ? '  -- ' + detail : ''));
+  say(cond ? 'pass' : 'fail',
+      (cond ? '  PASS  ' : '  FAIL  ') + name + (detail && !cond ? '  -- ' + detail : ''));
+}
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+/* ---- 劫持 setInterval：把 ai_view.js 的 4s 轮询压缩，测试才能秒级完成 ----
+   只压缩 >=1000ms 的定时器（那是轮询），不动短定时器（那是超时保护）。 */
+var _si = window.setInterval;
+window.setInterval = function(fn, ms){
+  return _si(fn, ms >= 1000 ? Math.max(20, ms / SPEEDUP) : ms);
+};
+
+/* ===================================================================
+   2) 后端 mock
+   =================================================================== */
+var stub = {
+  available: true,
+  readiness: null,          // 由各用例设置
+  summaryCalls: 0,          // 模型调用次数 —— 计费项，必须精确
+  readinessCalls: 0,
+  summaryMode: 'ok',        // ok | unavailable | throw
+  lastSummaryOpts: null
+};
+window.__stub = stub;
+
+function jsonResp(obj){
+  return Promise.resolve({ ok:true, json:function(){ return Promise.resolve(obj); } });
+}
+
+window.fetch = function(url, opts){
+  opts = opts || {};
+  if (url.indexOf('/portrait/ai_status') === 0) {
+    return jsonResp({status:'ok', available:stub.available,
+                     reason: stub.available ? null : '未配置模型 API 凭证'});
+  }
+  if (url.indexOf('/portrait/readiness') === 0) {
+    stub.readinessCalls++;
+    return jsonResp(stub.readiness || {status:'ok', ready:false, steps:[], blocking:['face']});
+  }
+  if (url.indexOf('/portrait/ai_summary') === 0) {
+    stub.summaryCalls++;
+    stub.lastSummaryOpts = opts;
+    if (stub.summaryMode === 'throw') return Promise.reject(new Error('boom'));
+    if (stub.summaryMode === 'unavailable') {
+      return jsonResp({status:'unavailable', reason:'尚无任何已采集指标，不生成解读'});
+    }
+    return jsonResp({
+      status:'ok',
+      summary:'本次测评显示专注度较高，情绪以平静为主。',
+      points:['专注度 85 为五维最高分','压力值 8，量表压力 10（正常）'],
+      caveat:'活力值未测量。',
+      model:'qwen-plus', measured:7, elapsed_ms:5604, cached:false
+    });
+  }
+  return Promise.reject(new Error('unexpected url ' + url));
+};
+
+/* ===================================================================
+   3) 复现外壳的面板生命周期
+   -------------------------------------------------------------------
+   这是本测试的核心：shell.html 的 openPopup() 每次打开面板都
+   remove() 旧 DOM 再 buildPopup() 建全新 DOM。旧版 ai_view.js 正是
+   在这个事实上失效的，所以必须如实复现，而不能只建一次 DOM。
+   =================================================================== */
+var host = document.getElementById('panel-host');
+
+function buildPanel(){
+  /* 与 shell_panels.js 的 AI 卡片结构一致：两个 data-* 锚点 + 占位文案。 */
+  var el = document.createElement('div');
+  el.className = 'popup-sim';
+  el.innerHTML =
+    '<div class="pv3-card pv3-ai-card">' +
+      '<div class="pv3-card-title">' +
+        '<h3>AI 综合解读</h3>' +
+        '<div class="pv3-ai-cta disabled" data-ai-cta aria-disabled="true">' +
+          '<span class="ic"></span><span class="lb">生成解读</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pv3-ai-body" data-ai-body>' +
+        '<p class="pv3-placeholder">三项采集（面部 / 语音 / 量表）全部完成后，将<b>自动生成</b>解读。</p>' +
+      '</div>' +
+    '</div>';
+  host.appendChild(el);
+  return el;
+}
+function destroyPanel(el){ if (el && el.parentNode) el.parentNode.removeChild(el); }
+
+function cta(root){ return root.querySelector('[data-ai-cta]'); }
+function body(root){ return root.querySelector('[data-ai-body]'); }
+function ctaLabel(root){ var l = cta(root).querySelector('.lb'); return l ? l.textContent : ''; }
+function ctaEnabled(root){ return !cta(root).classList.contains('disabled'); }
+
+/* readiness 构造器：ready=true 需要三项 done + 时间戳（指纹用）。 */
+function rdReady(ts){
+  return {status:'ok', ready:true, blocking:[], steps:[
+    {id:'face',  done:true, captured_at: ts},
+    {id:'voice', done:true, completed_stages:['vowel','reading']},
+    {id:'scale', done:true, submitted_at: ts}
+  ]};
+}
+function rdNotReady(){
+  return {status:'ok', ready:false, blocking:['face','voice','scale'], steps:[
+    {id:'face', done:false}, {id:'voice', done:false}, {id:'scale', done:false}
+  ]};
+}
+</script>
+
+<!-- 加载真实的被测模块。必须在 mock 就位【之后】。 -->
+<script src="/static/ai_view.js"></script>
+
+<script>
+/* ===================================================================
+   4) 用例
+   =================================================================== */
+(async function run(){
+  var TICK = 4000 / SPEEDUP;      // 一轮轮询的实际耗时
+  var W = TICK * 3 + 120;         // 等待窗口：足够跑几轮 + 网络 microtask
+
+  section('0. 模块导出');
+  chk(typeof window.AiView === 'object' && window.AiView, 'window.AiView 存在');
+  chk(typeof window.AiView.mount === 'function', 'AiView.mount 是函数');
+  chk(window.HikoAiView === window.AiView, '旧全局名 HikoAiView 仍指向同一对象（向后兼容）');
+
+  /* ---------------------------------------------------------------- */
+  section('1. 凭证就绪时 CTA 必须被解禁（原 bug：永久 disabled）');
+  var p1 = buildPanel();
+  chk(!ctaEnabled(p1), '初始态为 disabled（未探测前不应可点）');
+  window.AiView.mount(p1);
+  await sleep(W);
+  chk(ctaEnabled(p1), 'mount 后 CTA 已解禁', 'label=' + ctaLabel(p1));
+  chk(ctaLabel(p1) === '生成解读', 'CTA 文案为「生成解读」', 'got=' + ctaLabel(p1));
+
+  /* ---------------------------------------------------------------- */
+  section('2. 未齐备时不得自动生成（不能白烧模型调用）');
+  stub.readiness = rdNotReady();
+  stub.summaryCalls = 0;
+  await sleep(W);
+  chk(stub.readinessCalls > 0, 'readiness 正在被轮询', 'calls=' + stub.readinessCalls);
+  chk(stub.summaryCalls === 0, 'ready=false 时未调用 ai_summary',
+      'summaryCalls=' + stub.summaryCalls);
+
+  /* ---------------------------------------------------------------- */
+  section('3. 三项齐备 -> 自动生成一次（本次需求的核心）');
+  stub.readiness = rdReady('2026-08-21T16:40:00');
+  await sleep(W);
+  chk(stub.summaryCalls === 1, 'ready 转真后自动生成了恰好 1 次',
+      'summaryCalls=' + stub.summaryCalls);
+  chk(stub.lastSummaryOpts && stub.lastSummaryOpts.method === 'POST',
+      'ai_summary 用 POST（有副作用，不可被缓存）');
+  var h1 = body(p1).innerHTML;
+  chk(h1.indexOf('专注度较高') >= 0, '解读正文已渲染进面板');
+  chk(h1.indexOf('pv3-ai-points') >= 0, '要点列表已渲染（含样式钩子）');
+  chk(h1.indexOf('活力值未测量') >= 0, '局限说明（caveat）未被省略');
+  chk(h1.indexOf('qwen-plus') >= 0, '署名行披露了模型名');
+  chk(h1.indexOf('采集齐备后自动生成') >= 0, '披露了这是自动生成的');
+  chk(ctaLabel(p1) === '重新生成', '生成后 CTA 变为「重新生成」', 'got=' + ctaLabel(p1));
+
+  /* ---------------------------------------------------------------- */
+  section('4. 同一份采集不得重复生成（模型调用计费）');
+  await sleep(W * 2);              // 再放过好几轮轮询
+  chk(stub.summaryCalls === 1, '多轮轮询后仍只生成 1 次',
+      'summaryCalls=' + stub.summaryCalls);
+
+  /* ---------------------------------------------------------------- */
+  section('5. 重新采集（时间戳变化）应重新生成');
+  stub.readiness = rdReady('2026-08-21T17:05:00');   // 新时间戳 = 重测
+  await sleep(W);
+  chk(stub.summaryCalls === 2, '指纹变化后重新生成',
+      'summaryCalls=' + stub.summaryCalls);
+
+  /* ---------------------------------------------------------------- */
+  section('6. 面板重建后 CTA 仍然可点（★ 原 bug 的直接回归测试）');
+  /* 复现外壳行为：关闭面板 -> 移除 DOM -> 重新打开 -> 建全新 DOM -> mount。
+     旧实现在这一步之后彻底失效（绑定随旧节点丢失，且自轮询早已放弃）。 */
+  destroyPanel(p1);
+  await sleep(TICK * 2);           // 让旧 interval 察觉 DOM 已消失并自停
+  var callsAfterClose = stub.readinessCalls;
+  await sleep(TICK * 3);
+  chk(stub.readinessCalls === callsAfterClose,
+      '面板关闭后轮询自动停止（无定时器泄漏）',
+      'before=' + callsAfterClose + ' after=' + stub.readinessCalls);
+
+  var p2 = buildPanel();           // 全新 DOM，与 p1 不是同一节点
+  chk(cta(p2) !== cta(p1), '重建后确实是新的 DOM 节点');
+  window.AiView.mount(p2);
+  await sleep(W);
+  chk(ctaEnabled(p2), '重建 + 重新 mount 后 CTA 可点（★ bug 已修复）',
+      'label=' + ctaLabel(p2));
+
+  stub.summaryCalls = 0;
+  cta(p2).click();                 // 真实点击
+  await sleep(W);
+  chk(stub.summaryCalls === 1, '点击新面板的 CTA 真的触发了生成（★ 绑定有效）',
+      'summaryCalls=' + stub.summaryCalls);
+  chk(body(p2).innerHTML.indexOf('专注度较高') >= 0, '手动生成的内容已渲染');
+
+  /* ---------------------------------------------------------------- */
+  section('7. 失败必须回落到诚实占位，且不得 4s 重试刷额度');
+  destroyPanel(p2);
+  await sleep(TICK * 2);
+  var p3 = buildPanel();
+  stub.readiness = rdReady('2026-08-21T18:00:00');   // 新指纹，允许自动生成
+  stub.summaryMode = 'unavailable';
+  stub.summaryCalls = 0;
+  window.AiView.mount(p3);
+  await sleep(W);
+  chk(stub.summaryCalls === 1, '失败路径也只调用 1 次',
+      'summaryCalls=' + stub.summaryCalls);
+  var h3 = body(p3).innerHTML;
+  chk(h3.indexOf('自动生成</b>解读') >= 0 || h3.indexOf('三项采集') >= 0,
+      '已还原为原占位文案（不是空白栏）');
+  chk(h3.indexOf('尚无任何已采集指标') >= 0, '把后端的具体原因透出给用户');
+  chk(h3.indexOf('专注度较高') < 0, '失败时绝不显示上一次的旧内容');
+  await sleep(W * 3);
+  chk(stub.summaryCalls === 1, '失败后不再自动重试（不打光模型额度）',
+      'summaryCalls=' + stub.summaryCalls);
+  chk(ctaLabel(p3) === '重试', '失败后 CTA 变为「重试」', 'got=' + ctaLabel(p3));
+
+  section('8. 手动点击视为人工意图，可突破失败抑制');
+  stub.summaryMode = 'ok';
+  cta(p3).click();
+  await sleep(W);
+  chk(stub.summaryCalls === 2, '手动点击成功重试', 'summaryCalls=' + stub.summaryCalls);
+  chk(body(p3).innerHTML.indexOf('专注度较高') >= 0, '重试后正文正常渲染');
+
+  section('9. 网络异常（reject）同样不得白屏');
+  destroyPanel(p3);
+  await sleep(TICK * 2);
+  var p4 = buildPanel();
+  stub.readiness = rdReady('2026-08-21T19:00:00');
+  stub.summaryMode = 'throw';
+  window.AiView.mount(p4);
+  await sleep(W);
+  var h4 = body(p4).innerHTML;
+  chk(h4.indexOf('三项采集') >= 0, 'reject 时也还原占位');
+  chk(h4.indexOf('请求失败') >= 0 || h4.indexOf('本次未生成') >= 0,
+      '向用户说明了失败');
+
+  section('10. 未配置凭证时 CTA 保持灰态');
+  destroyPanel(p4);
+  await sleep(TICK * 2);
+  stub.available = false;
+  stub.summaryMode = 'ok';
+  stub.readiness = rdNotReady();
+  var p5 = buildPanel();
+  window.AiView.mount(p5);
+  await sleep(W);
+  chk(!ctaEnabled(p5), '无凭证时 CTA 灰态（避免「点了就报错」的主按钮）');
+  chk(ctaLabel(p5).indexOf('未配置') >= 0, 'CTA 文案说明未配置',
+      'got=' + ctaLabel(p5));
+
+  /* ---------------------------------------------------------------- */
+  var pass = results.filter(function(r){ return r.ok; }).length;
+  var fail = results.length - pass;
+  console.log('TEST_SUMMARY total=' + results.length + ' pass=' + pass + ' fail=' + fail);
+  if (fail) {
+    console.log('TEST_FAILED_NAMES ' +
+      results.filter(function(r){return !r.ok;}).map(function(r){return r.name;}).join(' | '));
+  }
+  say(fail ? 'fail' : 'pass',
+      '\n=== total=' + results.length + '  pass=' + pass + '  fail=' + fail + ' ===');
+})();
+</script>
+</body>
+</html>

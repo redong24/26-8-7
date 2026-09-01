@@ -1,0 +1,62 @@
+# =============================================================================
+# audio_service 依赖（conda 环境：audio_linux / Python 3.11.15）
+# =============================================================================
+# ⚠️⚠️ 隔离要求（勿违反）
+#   本服务【必须】装在独立 conda 环境，不得装进 rrpg_plus。
+#   原因（已实测确认，非推测）：
+#     - rrpg_plus 生产环境：numpy 1.26.4 + scipy 1.9.3 + torch 2.12.0
+#     - 本环境实际解析结果：numpy 2.4.6 + scipy 1.17.1
+#   librosa/soundfile 会把 numpy 顶到 2.x。若装进 rrpg_plus，
+#   将强制升级 numpy 并静默破坏已通过 15 轮验证的 rPPG 推理链
+#   （且 rrpg_plus 的 scipy 1.9.3 本就要求 numpy<1.26.0，已处于
+#    ABI 边缘状态，任何扰动都可能触发难以定位的数值错误）。
+#
+#   隔离已验证：安装本环境后 rrpg_plus 的 90 个包保持逐字节一致，
+#   基线 md5 058da4938e6f1b161c4fad5bce0161bf。
+#
+# 重建方式：
+#   conda create -n audio_linux python=3.11 -y
+#   conda activate audio_linux
+#   pip install -r requirements.txt
+#   # GPU 版 torch 需按下方注释单独装
+# =============================================================================
+
+# ---- 轨 A：手工声学特征（纯 CPU，无 GPU 依赖）-------------------------------
+numpy==2.4.6
+scipy==1.17.1
+librosa==0.11.0              # F0(pyin) / MFCC / 频谱特征 / 重采样
+soundfile==0.14.0            # WAV 读写（不依赖 ffmpeg）
+praat-parselmouth==0.4.7     # jitter / shimmer / HNR（Praat 算法绑定）
+webrtcvad==2.0.10            # 语音活动检测（停顿/语速）
+numba==0.67.0                # librosa 的加速后端
+llvmlite==0.49.0
+soxr==1.1.0                  # 高质量重采样后端
+audioread==3.1.0
+
+# ⚠️ webrtcvad 2.0.10 在 import 时使用 pkg_resources，
+#    而 setuptools>=81 已移除该 API（会直接 ModuleNotFoundError）。
+#    必须锁定 setuptools<81。此问题已实测复现并确认修复。
+setuptools==80.10.2
+
+# ---- 服务层 -----------------------------------------------------------------
+Flask==3.1.3                 # 与 openface_service 一致的轻量 HTTP 层
+
+# ---- 轨 B：深度模型（需要 GPU）---------------------------------------------
+modelscope==1.39.1           # 模型下载渠道（huggingface.co 在本机不可达）
+funasr==1.4.1                # SenseVoice 推理框架
+torchaudio==2.11.0
+
+# ⚠️ torch 不要用本文件安装 —— CPU 版会覆盖 CUDA 版。
+#    本机实测可用（RTX 5090 / CUDA 13.0）：
+#      pip install torch==2.13.0 torchaudio==2.11.0 \
+#          --index-url https://download.pytorch.org/whl/cu130
+#    安装后校验：
+#      python -c "import torch;print(torch.__version__, torch.cuda.is_available())"
+#      期望输出：2.13.0+cu130 True
+# torch==2.13.0
+
+# ---- 说明：ffmpeg 未安装，且不需要安装 --------------------------------------
+# funasr 启动时会打印 "ffmpeg is not installed, torchaudio is used to load audio"，
+# 这是预期行为。前端直接上传 WAV（PCM），torchaudio/soundfile 原生可读。
+# 刻意避免 ffmpeg + Opus 路径：Opus 是有损压缩，会污染
+# jitter/shimmer 这类微秒级周期扰动测量。

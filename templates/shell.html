@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HiKO数字生理感知 · 评估中心</title>
+<link rel="icon" href="{{ url_for('static', filename='logo.png') }}" type="image/png">
+<style>
+/* ==================================================================
+   HiKO 侧边导航外壳 (shell)
+   ------------------------------------------------------------------
+   设计原则：本文件不包含任何首页样式，首页通过 <iframe> 原样加载。
+   iframe 天然隔离 CSS/JS，因此首页布局与元素 100% 不受影响。
+
+   路由关系（2026-08-12 起，本页为默认入口）：
+     /max        -> 本外壳页 shell.html（默认入口）
+     /max_inner  -> 原首页 index.html（仅供本页 iframe 内层加载）
+     /v2         -> 本外壳页（历史别名，保持老链接可用）
+
+   色板取自首页 templates/index.html：
+     主青 #00F7FF · 淡青 #9BFFFB · 绿 #00E1A6 · 黄 #FFD466
+     面板底 rgba(39,70,133,.28) · 灰字 #B6BCC7 / #6C82A6
+   ================================================================== */
+:root{
+  --cyan:#00F7FF;
+  --cyan-2:#9BFFFB;
+  --green:#00E1A6;
+  --yellow:#FFD466;
+  --red:#FF5C5C;
+  --white:#FFFFFF;
+  --gray:#B6BCC7;
+  --gray-2:#6C82A6;
+  --panel:rgba(39,70,133,.28);
+  --bd:rgba(0,247,255,.35);
+  --bd-soft:rgba(0,247,255,.18);
+
+  /* 关键几何：与首页对齐 */
+  --nav-w:96px;   /* 导航栏宽度 */
+  --top-h:70px;   /* 首页 .bg-top 高度，保持顶栏完全可见 */
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:#050d1c;color:#EBEBEB;
+  font-family:Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+
+/* ============ 首页容器（iframe，原样加载，不缩放） ============ */
+#home-frame{
+  position:absolute;top:0;left:0;
+  width:100%;height:100%;
+  border:0;display:block;
+  background:#050d1c;
+}
+/* 窄屏时把首页向右推，避免导航栏遮挡内容 */
+body.push-mode #home-frame{
+  left:var(--nav-w);
+  width:calc(100% - var(--nav-w));
+}
+
+/* ============ 侧边导航栏 ============ */
+.sidenav{
+  position:fixed;left:0;top:0;bottom:0;
+  width:var(--nav-w);
+  padding:calc(var(--top-h) + 10px) 8px 20px;
+  display:flex;flex-direction:column;gap:12px;
+  background:linear-gradient(180deg,rgba(5,20,55,.92),rgba(8,28,70,.88));
+  border-right:1px solid var(--bd);
+  z-index:60;
+}
+.sidenav::before{
+  content:"";position:absolute;top:0;right:-1px;bottom:0;width:1px;
+  background:linear-gradient(180deg,transparent,var(--cyan),transparent);
+  opacity:.6;
+}
+.nav-item{
+  position:relative;padding:12px 4px 10px;border-radius:6px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  border:1px solid var(--bd-soft);
+  background:rgba(0,60,150,.12);
+  cursor:pointer;user-select:none;
+  transition:all .25s ease;
+}
+.nav-item .ico{
+  width:22px;height:22px;color:var(--cyan-2);
+  filter:drop-shadow(0 0 4px rgba(0,247,255,.45));
+}
+.nav-item .ico svg{width:100%;height:100%;}
+.nav-item .txt{
+  font-size:11px;line-height:1.4;letter-spacing:1px;text-align:center;
+  color:var(--gray);
+}
+.nav-item:hover{
+  background:rgba(0,120,255,.22);border-color:var(--cyan);
+  transform:translateX(2px);
+}
+.nav-item:hover .txt{color:#fff;}
+.nav-item.active{
+  background:linear-gradient(135deg,rgba(0,140,255,.4),rgba(0,80,200,.25));
+  border-color:var(--cyan);
+  box-shadow:0 0 16px rgba(0,247,255,.35), inset 0 0 20px rgba(0,247,255,.12);
+}
+.nav-item.active .ico{color:var(--cyan);filter:drop-shadow(0 0 6px var(--cyan));}
+.nav-item.active .txt{color:#fff;font-weight:bold;}
+
+/* ============ 遮罩 ============ */
+.overlay{
+  position:fixed;top:var(--top-h);left:var(--nav-w);right:0;bottom:0;
+  background:rgba(2,8,25,.55);
+  backdrop-filter:blur(3px);
+  opacity:0;pointer-events:none;transition:opacity .3s;
+  z-index:50;
+}
+.overlay.show{opacity:1;pointer-events:auto;}
+
+/* ============ 弹窗面板 ============ */
+.popup{
+  position:fixed;
+  top:var(--top-h);left:var(--nav-w);right:0;bottom:0;
+  z-index:55;
+  /* [2026-08-21 配色统一] 直接复用首页的底图 bg.png 作为弹窗底。
+     此前这里是自制的蓝色渐变 rgba(18,40,86)/rgba(12,30,66) + 两处径向光晕，
+     那是 2026-08-13 为了「把卡片从糊在一起里救出来」而整体提亮的产物。
+     问题在于：首页页面底其实很【暗】（bg.png 实测 ≈ #031230），
+     卡片才是较亮的蓝（bg-tb.png 内部 ≈ #294282）—— 是「暗底 + 亮卡」。
+     而这里把底提亮到 #122856 一档，又把卡片做成半透明白，
+     结果变成「亮底 + 更亮的灰白卡」，明暗关系跟首页正好相反，
+     并排看就是弹窗整体发灰、层次比首页平。
+     改用同一张底图后，弹窗与首页的底色【逐像素同源】，
+     配合卡片改回蓝底(见 psy_v3.css)，恢复首页的「暗底+亮卡」关系。
+     仍然只改 .popup，不动 body 与 #home-frame ——
+     首页布局与元素保持零改动，这是既定前提。
+     兜底：background-color 写 #031230（即 bg.png 的实测主色），
+     图片若加载失败也不会露出白底或旧蓝。 */
+  background-color:#031230;
+  background-image:url('/static/bg.png');
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  border-left:1px solid var(--cyan);
+  box-shadow:20px 0 60px rgba(0,0,0,.6), inset 60px 0 80px rgba(0,140,255,.08);
+  transform:translateX(-105%);
+  transition:transform .38s cubic-bezier(.22,.9,.3,1);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.popup.show{transform:translateX(0);}
+
+/* 标题带 .p-head 已移除（2026-08-12）：58px 的横向色带不承载任何数据，
+   面板身份由左侧导航高亮 + 底栏面包屑表达。移除后主体内容整体上移 58px。
+   原先住在 .p-head 里的「关闭按钮」与「示例数据」声明已迁至 .p-foot，
+   两者都是必须保留的功能/合规元素，不可随标题带一起删除。 */
+
+.p-body{flex:1;overflow-y:auto;padding:14px 28px 20px;}
+.p-body::-webkit-scrollbar{width:6px;}
+.p-body::-webkit-scrollbar-thumb{background:rgba(0,247,255,.3);border-radius:3px;}
+
+.p-foot{
+  flex:0 0 32px;background:rgba(5,15,40,.8);border-top:1px solid var(--bd-soft);
+  display:flex;align-items:center;padding:0 14px 0 26px;gap:18px;
+  font-size:10px;color:var(--gray-2);letter-spacing:2px;
+}
+.p-foot .live{color:var(--green);}
+.p-foot .live::before{content:"● ";}
+/* 面包屑：面板身份的唯一文字标识（原 .p-head h2 的替代） */
+.p-foot .breadcrumb{font-size:10px;color:var(--gray-2);letter-spacing:2px;white-space:nowrap;}
+.p-foot .breadcrumb .cur{color:var(--cyan);}
+/* 工具按钮：从 30px 缩到 22px，以塞进 32px 高的底栏 */
+.p-foot .p-tools{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto;}
+.p-foot .p-tools .tool{
+  width:22px;height:22px;border:1px solid var(--bd);border-radius:3px;
+  background:rgba(0,120,255,.08);color:var(--cyan-2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.2s;
+}
+.p-foot .p-tools .tool:hover{background:rgba(0,247,255,.2);color:#fff;}
+.p-foot .p-tools .tool svg{width:12px;height:12px;}
+.p-foot .esc-hint{margin-left:6px;}
+/* 底栏比原先多承载了 3 个文字项，窄屏按重要性依次让位。
+   关闭按钮(.p-tools) 与合规声明(.mock-note) 永不隐藏。 */
+@media (max-width:1500px){ .p-foot .esc-hint{display:none;} }
+@media (max-width:1100px){ .p-foot .ver{display:none;} }
+@media (max-width:900px){  .p-foot .live{display:none;} }
+
+/* ============ 通用组件（沿用首页视觉规范） ============ */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+
+.pcard{
+  background:var(--panel);border:1px solid var(--bd-soft);
+  border-radius:4px;padding:16px;position:relative;
+}
+.pcard.hi{border-color:var(--bd);box-shadow:0 0 12px rgba(0,247,255,.08);}
+.pcard::before{content:"";position:absolute;top:16px;left:0;width:4px;height:14px;background:var(--cyan);}
+.pcard h4{font-size:14px;color:var(--cyan-2);letter-spacing:1px;
+  margin-bottom:12px;padding-left:12px;font-weight:bold;}
+.pcard h4 .tag{float:right;font-size:11px;color:var(--gray-2);font-weight:normal;
+  padding:2px 8px;border:1px solid var(--bd-soft);border-radius:3px;}
+
+.section-title{
+  font-size:14px;color:var(--cyan-2);letter-spacing:2px;font-weight:bold;
+  margin:0 0 14px;padding-left:12px;position:relative;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.section-title::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:4px;
+  background:var(--cyan);box-shadow:0 0 6px var(--cyan);}
+.section-title .aside{font-size:11px;color:var(--gray-2);font-weight:normal;letter-spacing:1px;}
+
+.big-num{font-size:36px;font-weight:bold;color:var(--white);line-height:1;
+  text-shadow:0 0 12px rgba(0,247,255,.4);}
+
+.tinytag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;
+  letter-spacing:1px;border:1px solid var(--bd-soft);color:var(--gray);}
+.tinytag.g{background:rgba(0,225,166,.12);color:var(--green);border-color:rgba(0,225,166,.4);}
+.tinytag.o{background:rgba(255,212,102,.12);color:var(--yellow);border-color:rgba(255,212,102,.4);}
+.tinytag.c{background:rgba(0,247,255,.12);color:var(--cyan);border-color:rgba(0,247,255,.4);}
+.tinytag.r{background:rgba(255,92,92,.12);color:var(--red);border-color:rgba(255,92,92,.4);}
+
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:8px 0;
+  border-bottom:1px dashed var(--bd-soft);}
+.kv:last-child{border-bottom:none;}
+.kv .k{color:var(--gray);}
+.kv .v{color:var(--white);font-weight:bold;}
+.kv .v.ok{color:var(--green);}
+.kv .v.warn{color:var(--yellow);}
+.kv .v.bad{color:var(--red);}
+
+.hbar{margin:10px 0;}
+.hbar .t{display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:5px;}
+.hbar .t b{color:var(--white);}
+.hbar .b{height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;}
+.hbar .b i{display:block;height:100%;border-radius:4px;
+  background:linear-gradient(90deg,#00E1A6,#00F7FF);box-shadow:0 0 6px rgba(0,247,255,.4);}
+
+.au-line{display:grid;grid-template-columns:100px 1fr 46px;align-items:center;gap:10px;
+  font-size:12px;padding:5px 0;}
+.au-line .n{color:var(--gray);}
+.au-line .tr{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.au-line .fl{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#00E1A6,#00F7FF);}
+.au-line .v{text-align:right;color:var(--white);font-weight:bold;font-family:Consolas,monospace;}
+
+.ring-box{display:flex;align-items:center;gap:22px;}
+.ring{position:relative;width:120px;height:120px;flex:0 0 120px;}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg);}
+.ring .rv{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;}
+.ring .rv b{font-size:28px;color:var(--white);font-weight:bold;text-shadow:0 0 10px rgba(0,247,255,.5);}
+.ring .rv span{font-size:11px;color:var(--gray-2);letter-spacing:1px;margin-top:2px;}
+
+.advice{
+  background:rgba(0,225,166,.08);border:1px solid rgba(0,225,166,.3);
+  border-left:3px solid var(--green);
+  border-radius:4px;padding:14px 16px;font-size:12px;line-height:2;color:#DFF;
+}
+.advice ul{list-style:none;}
+.advice li{padding-left:16px;position:relative;}
+.advice li::before{content:"›";position:absolute;left:0;color:var(--green);font-weight:bold;}
+.advice b{color:var(--green);}
+
+.timeline{position:relative;padding-left:22px;}
+.timeline::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;
+  background:linear-gradient(180deg,var(--cyan),rgba(0,247,255,.1));}
+.timeline .item{position:relative;margin-bottom:14px;font-size:12px;padding-left:8px;}
+.timeline .item::before{content:"";position:absolute;left:-20px;top:5px;width:8px;height:8px;
+  border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+.timeline .item .time{color:var(--cyan-2);font-weight:bold;margin-right:8px;font-family:Consolas,monospace;}
+.timeline .item .t{color:var(--white);}
+.timeline .item .d{font-size:11px;color:var(--gray);margin-top:3px;line-height:1.6;}
+
+.scene-card{
+  background:var(--panel);border:1px solid var(--bd-soft);border-radius:6px;
+  padding:20px 16px;text-align:center;cursor:pointer;transition:.25s;
+}
+.scene-card:hover{border-color:var(--cyan);transform:translateY(-3px);
+  box-shadow:0 8px 24px rgba(0,140,255,.25);}
+.scene-card .si{width:44px;height:44px;margin:0 auto 12px;color:var(--cyan);}
+.scene-card .si svg{width:100%;height:100%;}
+.scene-card h5{font-size:14px;color:var(--white);margin-bottom:6px;letter-spacing:1px;}
+.scene-card p{font-size:11px;color:var(--gray);line-height:1.7;}
+.scene-card .st{margin-top:10px;}
+
+.face-map{
+  aspect-ratio:1;position:relative;
+  background:radial-gradient(ellipse at 30% 40%,rgba(255,92,92,.28),transparent 35%),
+             radial-gradient(ellipse at 70% 45%,rgba(255,212,102,.25),transparent 35%),
+             radial-gradient(ellipse at 50% 65%,rgba(0,225,166,.22),transparent 40%),
+             rgba(20,40,80,.55);
+  border:1px solid var(--bd-soft);border-radius:6px;
+}
+.face-map::before{
+  content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:60%;height:75%;border:1.5px dashed rgba(0,247,255,.4);
+  border-radius:50% 50% 45% 45% / 60% 60% 40% 40%;
+}
+.face-legend{display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--gray);}
+.face-legend .lb{display:flex;align-items:center;gap:4px;}
+.face-legend .sw{width:10px;height:10px;border-radius:2px;}
+
+/* 示例数据提示 */
+.mock-note{
+  display:inline-block;margin-left:10px;padding:2px 8px;border-radius:3px;
+  font-size:10px;letter-spacing:1px;
+  background:rgba(255,180,0,.15);border:1px solid rgba(255,180,0,.5);color:var(--yellow);
+}
+</style>
+
+<!-- ============================================================
+     心理综合评估 v3 样式（方案 A · 主内容区嵌入本外壳弹窗）
+     命名全部隔离在 .psy-v3 / --pv3-* 之下，与上方外壳样式互不影响。
+     必须放在外壳 <style> 之后加载。
+     ============================================================ -->
+<link rel="stylesheet" href="{{ url_for('static', filename='psy_v3.css') }}">
+
+<!-- 字体：非阻塞加载。
+     服务器位于境内，Google Fonts 可能不可达；此处用 media 切换技巧
+     使其永不阻塞首屏渲染，取不到时自动回退到 psy_v3.css 里声明的
+     本地字体栈（PingFang SC / Microsoft YaHei / Consolas 等）。 -->
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+</head>
+<body>
+
+<!-- ============================================================
+     首页：原样 iframe 加载 /max_inner，不做任何缩放或样式覆盖
+     注意：src 必须是 /max_inner 而非 /max。
+     /max 现已指向本外壳页（默认入口），若此处写 /max
+     会导致外壳在自己的 iframe 中递归加载自身，浏览器卡死。
+     /max_inner 是原首页 index.html 的专用内层路由。
+     ============================================================ -->
+<iframe id="home-frame" src="/max_inner" title="HiKO数字生理感知"
+        allow="camera; microphone; autoplay"></iframe>
+
+<!-- 侧边导航栏 -->
+<nav class="sidenav" id="sidenav"></nav>
+
+<!-- 弹窗层 -->
+<div class="overlay" id="overlay"></div>
+<div id="popup-container"></div>
+
+<script>
+/* ==============================================================
+   图标
+   ============================================================== */
+const ICONS = {
+  status: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>`,
+  psy:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3c-4 0-7 3-7 7 0 2 1 4 2 5v4l3-1c.7.1 1.3.2 2 .2 4 0 7-3 7-7s-3-7-7-7z"/><path d="M9 10h.01M15 10h.01M9 14c1 1 5 1 6 0"/></svg>`,
+  bio:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h3l2-6 4 12 2-6h7"/></svg>`,
+  skin:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="11" rx="6" ry="8"/><circle cx="10" cy="10" r=".8" fill="currentColor"/><circle cx="14" cy="12" r=".8" fill="currentColor"/><circle cx="11" cy="14" r=".8" fill="currentColor"/></svg>`,
+  scene:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 9h18M8 5v14"/></svg>`,
+  plan:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>`,
+  close:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
+  export: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 8l5-5 5 5M4 17v3h16v-3"/></svg>`,
+  car:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16V9l3-4h10l3 4v7M6 16v3M18 16v3M2 16h20"/><circle cx="7" cy="16" r="2"/><circle cx="17" cy="16" r="2"/></svg>`,
+  work:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="7" width="20" height="14" rx="1"/><path d="M8 7V4h8v3"/></svg>`,
+  study:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6l8-3 8 3-8 3-8-3zM4 6v6l8 3 8-3V6"/></svg>`,
+  sport:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="5" r="2"/><path d="M8 12l3-4 4 2 3 5-2 2-3-3M9 21l3-6"/></svg>`,
+  mic:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`,
+  moon:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 13a8 8 0 1 1-10-10 6 6 0 0 0 10 10z"/></svg>`,
+};
+
+/* ==============================================================
+   导航项
+   ============================================================== */
+const NAV_ITEMS = [
+  {id:'status', label:'状态<br>感知',        icon:'status', home:true},
+  {id:'psy',    label:'心理综合<br>评估',    icon:'psy'},
+  {id:'bio',    label:'生理健康<br>评估',    icon:'bio'},
+  {id:'skin',   label:'肌肤健康<br>评估',    icon:'skin'},
+  {id:'scene',  label:'特殊场景<br>评估',    icon:'scene'},
+  {id:'plan',   label:'个人终端<br>健康方案', icon:'plan'},
+];
+</script>
+<script src="{{ url_for('static', filename='shell_panels.js') }}"></script>
+<!-- 语音任务录音模块。放在 shell_panels.js 之后：
+     psy 面板的 mount() 会调用 window.VoiceRecorder.mount()，
+     而 mount() 由下方 buildPopup() 在用户点开面板时才触发，
+     因此只需保证两个脚本都已加载，不依赖更强的顺序约束。 -->
+<script src="{{ url_for('static', filename='voice_recorder.js') }}"></script>
+<script src="{{ url_for('static', filename='emotion_view.js') }}"></script>
+<!-- 注意与表情行为（头姿视线 + AU 融合）。2026-08-13 替代原「情绪时间线」。 -->
+<script src="{{ url_for('static', filename='behavior_view.js') }}"></script>
+<!-- 采集完成度 + 五维画像门控。2026-08-13 新增，接 /portrait/* 快照层。
+     它向 shell_panels.js 暴露 _submitScale / _resetScale 两个钩子，
+     DASS-21 答满 21 题时靠它把答案送到后端 —— 在此之前答案只存在
+     浏览器模块级变量里，刷新即丢，后端从未见过。 -->
+<script src="{{ url_for('static', filename='portrait_view.js') }}"></script>
+<!-- AI 综合解读（2026-08-21 新增，接 /portrait/ai_summary）。
+     与上面几个模块同理：由 psy 面板的 mount() 调用 window.AiView.mount()，
+     而 mount() 要等用户点开面板才触发，所以只需两个脚本都已加载，
+     不依赖更强的顺序约束。
+     采集三项齐备后会自动生成一次解读（同一份数据只生成一次）；
+     模型不可用时按钮保持灰态并回落到占位文案，不影响其他面板。
+
+     注：早先这里写的是「它自己轮询等面板出现，因此不依赖脚本顺序」——
+     那个自轮询方案是错的（外壳每次重建面板 DOM，轮询只跑 30 秒就放弃，
+     导致按钮永久点不动），已改为由 mount() 驱动。 -->
+<script src="{{ url_for('static', filename='ai_view.js') }}"></script>
+<script>
+/* ==============================================================
+   构建导航 + 交互
+   ============================================================== */
+const sidenav = document.getElementById('sidenav');
+const overlay = document.getElementById('overlay');
+const popupContainer = document.getElementById('popup-container');
+let currentPopup = null, currentKey = null;
+
+NAV_ITEMS.forEach(item=>{
+  const el = document.createElement('div');
+  el.className = 'nav-item' + (item.home ? ' active' : '');
+  el.dataset.id = item.id;
+  el.innerHTML = `<div class="ico">${ICONS[item.icon]}</div><div class="txt">${item.label}</div>`;
+  sidenav.appendChild(el);
+});
+
+function setActive(id){
+  sidenav.querySelectorAll('.nav-item').forEach(n=>{
+    n.classList.toggle('active', n.dataset.id === id);
+  });
+}
+
+function buildPopup(key){
+  const cfg = PANELS[key];
+  const el = document.createElement('div');
+  el.className = 'popup';
+  /* .p-head 已移除，主体内容直接占满弹窗顶部。
+     关闭按钮与「示例数据」声明迁入 .p-foot —— 前者是唯一的鼠标关闭入口，
+     后者是合规声明，二者都不能随标题带删除。 */
+  el.innerHTML = `
+    <div class="p-body">${cfg.render()}</div>
+    <div class="p-foot">
+      <span class="live">首页检测持续运行中</span>
+      <span class="breadcrumb">HiKO · <span class="cur">${cfg.title}</span></span>
+      <span class="ver">模型 v2.4.1</span>
+      <span class="mock-note">示例数据 · 未接入实时模型</span>
+      <span class="esc-hint">ESC / 点击遮罩 / 再次点击导航项 均可关闭</span>
+      <div class="p-tools">
+        <div class="tool" data-export title="导出">${ICONS.export}</div>
+        <div class="tool" data-close title="关闭">${ICONS.close}</div>
+      </div>
+    </div>
+  `;
+  el.querySelector('[data-close]').addEventListener('click', closePopup);
+  popupContainer.appendChild(el);
+  /* 面板可选的挂载钩子：需要事件绑定的面板（如 DASS-21 量表作答）
+     在此初始化。必须在 appendChild 之后调用 —— 之前元素还不在文档里，
+     部分依赖布局的操作会失效。
+     用 try 包裹：某个面板的交互脚本出错不应导致整个弹窗打不开。 */
+  if (typeof cfg.mount === 'function'){
+    try { cfg.mount(el); }
+    catch(err){ console.error('[panel mount] ' + key + ' 初始化失败:', err); }
+  }
+  return el;
+}
+
+function openPopup(key){
+  if(!PANELS[key]) return;
+  if(currentKey === key){ closePopup(); return; }
+  // 切换面板时也要通知面板释放资源（语音卡要停掉麦克风）。
+  // 不派发的话，从「心理」切到「生理」后浏览器仍显示录音指示灯。
+  if(currentPopup){
+    document.dispatchEvent(new CustomEvent('psy-panel-close'));
+    currentPopup.remove(); currentPopup = null;
+  }
+  currentKey = key;
+  currentPopup = buildPopup(key);
+  overlay.classList.add('show');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>currentPopup.classList.add('show')));
+  setActive(key);
+}
+
+function closePopup(){
+  if(!currentPopup) return;
+  // 关闭前通知面板释放资源：语音卡据此 stop track + close AudioContext，
+  // 否则麦克风占用与浏览器录音指示灯会一直保留。
+  document.dispatchEvent(new CustomEvent('psy-panel-close'));
+  currentPopup.classList.remove('show');
+  overlay.classList.remove('show');
+  const p = currentPopup; currentPopup = null; currentKey = null;
+  setTimeout(()=>p.remove(), 400);
+  setActive('status');
+}
+
+sidenav.addEventListener('click', e=>{
+  const item = e.target.closest('.nav-item');
+  if(!item) return;
+  const id = item.dataset.id;
+  if(id === 'status'){ closePopup(); setActive('status'); return; }
+  openPopup(id);
+});
+
+overlay.addEventListener('click', closePopup);
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closePopup(); });
+
+/* ==============================================================
+   自适应：宽屏用叠加模式（首页完全不受影响），
+           窄屏自动切换为推挤模式（避免导航栏遮挡首页内容）
+   首页主容器宽度 = min(1520px, 100vw - 20px)
+   宽屏时左右留白 (100vw-1520)/2 > 96px 即不会遮挡
+   ============================================================== */
+const HOME_MAX_W = 1520, NAV_W = 96;
+function fitMode(){
+  const need = HOME_MAX_W + NAV_W * 2;   // 1712px
+  document.body.classList.toggle('push-mode', window.innerWidth < need);
+}
+fitMode();
+window.addEventListener('resize', fitMode);
+</script>
+</body>
+</html>
