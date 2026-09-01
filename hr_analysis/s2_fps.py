@@ -1,0 +1,28 @@
+import numpy as np, glob, os
+D="/home/lsz/real_time_plus/real_time_Demo/frame_capture_diag"
+fs=sorted(glob.glob(os.path.join(D,"capture_4b989b29_*.npz")))
+rows=[]
+for f in fs:
+    d=np.load(f); ts=d['timestamps']; dt=np.diff(ts)
+    rows.append((1/dt.mean(), 100*dt.std()/dt.mean(), ts[-1]-ts[0], len(ts)))
+a=np.array(rows)
+print("受试者B全部%d份样本的时间轴统计"%len(a))
+print("真实帧率  : mean=%.2f  median=%.2f  min=%.2f  max=%.2f fps"%(a[:,0].mean(),np.median(a[:,0]),a[:,0].min(),a[:,0].max()))
+print("抖动系数  : mean=%.1f%%  max=%.1f%%"%(a[:,1].mean(),a[:,1].max()))
+print("窗口时长  : mean=%.2fs  min=%.2f  max=%.2f"%(a[:,2].mean(),a[:,2].min(),a[:,2].max()))
+print("帧数      : mean=%.0f  min=%d  max=%d"%(a[:,3].mean(),a[:,3].min(),a[:,3].max()))
+print()
+print("="*60)
+print("【关键发现】代码假设 SHADOW_TARGET_FS = 30 fps")
+print("           实际采集帧率仅 %.1f fps"%np.median(a[:,0]))
+print("="*60)
+f_real=np.median(a[:,0])
+print("Nyquist上限 = %.1f/2 = %.2f Hz = %.1f bpm"%(f_real,f_real/2,f_real/2*60))
+print("-> 真实可测心率上限约 %.0f bpm, 而搜索带上限设到了140"%(f_real/2*60))
+print()
+print("代码里的安全上限保护: shadow_safe_ul = min(140, fs*60/2*0.9)")
+print("  若 fs 用的是重采样后的 30 -> min(140, 810) = 140  (保护失效!)")
+print("  若按真实 %.1f fps    -> min(140, %.1f) = %.1f"%(f_real,f_real*60/2*0.9,min(140,f_real*60/2*0.9)))
+print()
+print("重采样把 %.1ffps 的数据插值成 30fps, 不会创造信息,"%f_real)
+print("但会让后续所有频谱分析误以为自己有 30fps 的带宽。")

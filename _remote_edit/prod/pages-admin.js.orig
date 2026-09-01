@@ -1,0 +1,563 @@
+/* =============================================================================
+ * 后台管理页面（仅 PLATFORM_ADMIN）
+ *   医院管理 / 账号管理 / 数据导出中心 / 审计日志
+ * ============================================================================= */
+window.PageAdmin = (() => {
+
+  /* ============================ 平台总览 ============================ */
+  async function overview(body) {
+    body.innerHTML = `<div id="ov" class="space-y-4"><p class="text-slate-400 text-sm py-10 text-center"><i class="fas fa-circle-notch fa-spin"></i> 加载中…</p></div>`
+    try {
+      const s = (await API.get('/api/admin/stats')).data
+      const card = (icon, label, value, color) => `
+        <div class="card p-4 flex items-center gap-4">
+          <span class="h-11 w-11 rounded-xl grid place-items-center ${color}"><i class="fas ${icon}"></i></span>
+          <div><p class="text-2xl font-bold text-ink-800 leading-none">${value ?? 0}</p>
+          <p class="text-xs text-slate-500 mt-1">${label}</p></div>
+        </div>`
+      document.getElementById('ov').innerHTML = `
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          ${card('fa-hospital', '在用医院', s.hospitals, 'bg-brand-50 text-brand-600')}
+          ${card('fa-user-doctor', '医生账号', s.doctors, 'bg-emerald-50 text-emerald-600')}
+          ${card('fa-user-nurse', '护士账号', s.nurses, 'bg-cyan-50 text-cyan-600')}
+          ${card('fa-users', '患者总数', s.patients, 'bg-violet-50 text-violet-600')}
+          ${card('fa-file-medical', '报告单总数', s.reports, 'bg-amber-50 text-amber-600')}
+          ${card('fa-paper-plane', '已提交', s.submitted, 'bg-green-50 text-green-600')}
+          ${card('fa-layer-group', '在用模版', s.templates, 'bg-indigo-50 text-indigo-600')}
+          ${card('fa-video', '在线采集设备', s.devices_online, 'bg-rose-50 text-rose-600')}
+        </div>
+        `
+    } catch (e) {
+      document.getElementById('ov').innerHTML = `<p class="text-red-600 text-sm py-8 text-center">${UI.esc(e.message)}</p>`
+    }
+  }
+
+  /* ============================ 医院管理 ============================ */
+  async function hospitals(body) {
+    body.innerHTML = `
+      <div class="space-y-4">
+        <div class="card p-4 flex flex-wrap items-center gap-3">
+          <button id="h-new" class="btn btn-primary"><i class="fas fa-hospital"></i>新增医院</button>
+          <div class="flex-1"></div>
+          <div class="relative">
+            <i class="fas fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-sm"></i>
+            <input id="h-kw" class="field-input !pl-9 w-56" placeholder="搜索名称 / 编码">
+          </div>
+        </div>
+        <div class="card p-0 overflow-hidden"><div id="h-list" class="overflow-x-auto"></div></div>
+      </div>`
+    document.getElementById('h-new').addEventListener('click', () => hospitalEditor(null))
+    let t
+    document.getElementById('h-kw').addEventListener('input', e => { clearTimeout(t); t = setTimeout(() => loadHospitals(e.target.value), 320) })
+    loadHospitals()
+  }
+
+  async function loadHospitals(kw = '') {
+    const el = document.getElementById('h-list')
+    el.innerHTML = '<p class="text-center py-12 text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin"></i> 加载中…</p>'
+    try {
+      const r = await API.get('/api/admin/hospitals', { kw })
+      if (!r.data.length) {
+        el.innerHTML = UI.emptyState('fa-hospital', '暂无医院', '点击「新增医院」创建第一家医院',
+          '<button class="btn btn-primary" onclick="PageAdmin.hospitalEditor(null)"><i class="fas fa-plus"></i>新增医院</button>')
+        return
+      }
+      el.innerHTML = `<table class="data-table"><thead><tr>
+          <th>医院名称</th><th>编码</th><th>联系电话</th><th>地址</th>
+          <th>医生</th><th>护士</th><th>患者</th><th>报告单</th><th>状态</th><th class="text-right">操作</th>
+        </tr></thead><tbody>
+        ${r.data.map(h => `<tr>
+          <td class="font-medium text-ink-800">${UI.esc(h.name)}</td>
+          <td class="font-mono text-xs">${UI.esc(h.code)}</td>
+          <td class="text-xs">${UI.fmt.empty(h.phone)}</td>
+          <td class="text-xs max-w-[200px] truncate" title="${UI.esc(h.address || '')}">${UI.fmt.empty(h.address)}</td>
+          <td>${h.doctors}</td><td>${h.nurses}</td><td>${h.patients}</td><td>${h.reports}</td>
+          <td><span class="badge ${h.is_active ? 'badge-online' : 'badge-offline'}">${h.is_active ? '启用' : '停用'}</span></td>
+          <td class="text-right whitespace-nowrap">
+            <button data-acc="${h.id}" data-name="${UI.esc(h.name)}" class="btn btn-xs btn-primary" title="账号管理"><i class="fas fa-users-gear"></i></button>
+            <button data-edit="${h.id}" class="btn btn-xs btn-ghost" title="编辑"><i class="fas fa-pen"></i></button>
+            <button data-del="${h.id}" data-cnt="${h.patients + h.reports}" class="btn btn-xs btn-ghost text-red-500" title="删除"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>`).join('')}</tbody></table>`
+
+      el.querySelectorAll('[data-acc]').forEach(b => b.addEventListener('click', () =>
+        App.go('admin-accounts', { hospital_id: b.dataset.acc, hospital_name: b.dataset.name })))
+      el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () =>
+        hospitalEditor(r.data.find(x => x.id === b.dataset.edit))))
+      el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+        if (Number(b.dataset.cnt) > 0) return UI.toast('该医院下已有患者或报告单，仅可停用不可删除', 'warn')
+        if (!await UI.confirm({ title: '删除医院', message: '将同时删除该医院下的所有账号，操作不可恢复。', requireText: 'DELETE' })) return
+        try { await API.del('/api/admin/hospitals/' + b.dataset.del); UI.toast('医院已删除', 'success'); loadHospitals() }
+        catch (e) { UI.toast(e.message, 'error') }
+      }))
+    } catch (e) { el.innerHTML = `<p class="text-red-600 text-sm py-10 text-center">${UI.esc(e.message)}</p>` }
+  }
+
+  function hospitalEditor(h) {
+    const isNew = !h?.id
+    UI.modal({
+      title: `<i class="fas fa-hospital text-brand-500 mr-2"></i>${isNew ? '新增医院' : '编辑医院'}`,
+      size: 'md',
+      body: `<div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="field-label">医院名称 <span class="text-red-500">*</span></label>
+              <input data-f="name" class="field-input" value="${UI.esc(h?.name || '')}" placeholder="例：市第一人民医院"></div>
+            <div><label class="field-label">医院编码 <span class="text-red-500">*</span></label>
+              <input data-f="code" class="field-input font-mono" value="${UI.esc(h?.code || '')}" placeholder="例：H001"></div>
+            <div><label class="field-label">联系电话</label>
+              <input data-f="phone" class="field-input" value="${UI.esc(h?.phone || '')}"></div>
+            <div><label class="field-label">Logo URL</label>
+              <input data-f="logo_url" class="field-input" value="${UI.esc(h?.logo_url || '')}" placeholder="https://…"></div>
+          </div>
+          <div><label class="field-label">地址</label>
+            <input data-f="address" class="field-input" value="${UI.esc(h?.address || '')}"></div>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" data-active ${h?.is_active !== 0 ? 'checked' : ''} class="rounded"> 启用该医院（停用后其账号无法登录）
+          </label>
+        </div>`,
+      footer: `<button data-cancel class="btn btn-ghost">取消</button>
+               <button data-ok class="btn btn-primary"><i class="fas fa-check"></i>${isNew ? '创建' : '保存'}</button>`,
+      onMount(root, close) {
+        root.querySelector('[data-cancel]').addEventListener('click', close)
+        root.querySelector('[data-ok]').addEventListener('click', async () => {
+          const p = { is_active: root.querySelector('[data-active]').checked }
+          root.querySelectorAll('[data-f]').forEach(el => p[el.dataset.f] = el.value.trim())
+          if (!p.name || !p.code) return UI.toast('医院名称与编码必填', 'warn')
+          try {
+            UI.loading(true, '保存中…')
+            isNew ? await API.post('/api/admin/hospitals', p) : await API.put('/api/admin/hospitals/' + h.id, p)
+            UI.loading(false); close(); UI.toast(isNew ? '医院已创建' : '医院已更新', 'success'); loadHospitals()
+          } catch (e) { UI.loading(false); UI.toast(e.message, 'error') }
+        })
+      }
+    })
+  }
+
+  /* ============================ 账号管理 ============================ */
+  let accHospital = null
+
+  async function accounts(body, params = {}) {
+    let list = []
+    try { list = (await API.get('/api/admin/hospitals')).data } catch {}
+    accHospital = params.hospital_id || accHospital || list[0]?.id || null
+
+    body.innerHTML = `
+      <div class="space-y-4">
+        <div class="card p-4 flex flex-wrap items-center gap-3">
+          <label class="text-sm text-slate-500">医院</label>
+          <select id="a-hospital" class="field-input !w-auto min-w-[220px]">
+            ${list.map(h => `<option value="${h.id}" ${h.id === accHospital ? 'selected' : ''}>${UI.esc(h.name)} (${UI.esc(h.code)})</option>`).join('')}
+          </select>
+          <button id="a-new" class="btn btn-primary btn-sm"><i class="fas fa-user-plus"></i>新增账号</button>
+          <div class="flex-1"></div>
+          <span class="text-xs text-slate-400"><i class="fas fa-circle-info mr-1"></i>切换医院查看/新增该医院的医生与护士账号</span>
+        </div>
+        <div class="card p-0 overflow-hidden"><div id="a-list" class="overflow-x-auto"></div></div>
+      </div>`
+
+    if (!list.length) {
+      document.getElementById('a-list').innerHTML = UI.emptyState('fa-hospital', '请先创建医院', '账号必须归属于某家医院')
+      return
+    }
+    document.getElementById('a-hospital').addEventListener('change', e => { accHospital = e.target.value; loadAccounts() })
+    document.getElementById('a-new').addEventListener('click', () => accountEditor(null))
+    loadAccounts()
+  }
+
+  async function loadAccounts() {
+    const el = document.getElementById('a-list')
+    el.innerHTML = '<p class="text-center py-12 text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin"></i> 加载中…</p>'
+    try {
+      const r = await API.get('/api/admin/accounts', { hospital_id: accHospital })
+      if (!r.data.length) {
+        el.innerHTML = UI.emptyState('fa-user-slash', '该医院暂无账号', '点击「新增账号」创建医生或护士账号')
+        return
+      }
+      el.innerHTML = `<table class="data-table"><thead><tr>
+          <th>用户名</th><th>姓名</th><th>角色</th><th>电话</th><th>状态</th><th>最近登录</th><th>创建时间</th><th class="text-right">操作</th>
+        </tr></thead><tbody>
+        ${r.data.map(u => `<tr>
+          <td class="font-mono text-xs">${UI.esc(u.username)}</td>
+          <td class="font-medium">${UI.esc(u.real_name)}</td>
+          <td>${u.role === 'DOCTOR'
+            ? '<span class="badge bg-emerald-50 text-emerald-700"><i class="fas fa-user-doctor"></i> 医生</span>'
+            : u.role === 'NURSE' ? '<span class="badge bg-cyan-50 text-cyan-700"><i class="fas fa-user-nurse"></i> 护士</span>'
+            : '<span class="badge bg-violet-50 text-violet-700">管理员</span>'}</td>
+          <td class="text-xs">${UI.fmt.empty(u.phone)}</td>
+          <td>
+            <span class="badge ${u.is_active ? 'badge-online' : 'badge-offline'}">${u.is_active ? '启用' : '停用'}</span>
+            ${u.must_change_password ? '<span class="badge bg-amber-50 text-amber-700 ml-1" title="首次登录需改密">待改密</span>' : ''}
+            ${u.locked_until ? '<span class="badge badge-deleted ml-1" title="登录失败次数过多">已锁定</span>' : ''}
+          </td>
+          <td class="text-xs text-slate-400">${UI.fmt.datetime(u.last_login_at)}</td>
+          <td class="text-xs text-slate-400">${UI.fmt.datetime(u.created_at)}</td>
+          <td class="text-right whitespace-nowrap">
+            <button data-pwd="${u.id}" class="btn btn-xs btn-ghost" title="重置密码"><i class="fas fa-key"></i></button>
+            ${u.locked_until ? `<button data-unlock="${u.id}" class="btn btn-xs btn-ghost text-amber-600" title="解锁"><i class="fas fa-unlock"></i></button>` : ''}
+            <button data-edit="${u.id}" class="btn btn-xs btn-ghost" title="编辑"><i class="fas fa-pen"></i></button>
+            <button data-del="${u.id}" class="btn btn-xs btn-ghost text-red-500" title="删除"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>`).join('')}</tbody></table>`
+
+      el.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => accountEditor(r.data.find(x => x.id === b.dataset.edit))))
+      el.querySelectorAll('[data-pwd]').forEach(b => b.addEventListener('click', () => resetPwd(b.dataset.pwd)))
+      el.querySelectorAll('[data-unlock]').forEach(b => b.addEventListener('click', async () => {
+        try { await API.post(`/api/admin/accounts/${b.dataset.unlock}/unlock`); UI.toast('已解锁', 'success'); loadAccounts() }
+        catch (e) { UI.toast(e.message, 'error') }
+      }))
+      el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+        if (!await UI.confirm({ title: '删除账号', message: '确认删除该账号？若已关联报告单请改为停用。' })) return
+        try { await API.del('/api/admin/accounts/' + b.dataset.del); UI.toast('账号已删除', 'success'); loadAccounts() }
+        catch (e) { UI.toast(e.message, 'error') }
+      }))
+    } catch (e) { el.innerHTML = `<p class="text-red-600 text-sm py-10 text-center">${UI.esc(e.message)}</p>` }
+  }
+
+  function accountEditor(u) {
+    const isNew = !u?.id
+    UI.modal({
+      title: `<i class="fas fa-user-pen text-brand-500 mr-2"></i>${isNew ? '新增账号' : '编辑账号'}`,
+      size: 'md',
+      body: `<div class="grid grid-cols-2 gap-4">
+          <div><label class="field-label">用户名 <span class="text-red-500">*</span></label>
+            <input data-f="username" class="field-input font-mono" value="${UI.esc(u?.username || '')}" ${isNew ? '' : 'disabled'} placeholder="登录用户名"></div>
+          <div><label class="field-label">真实姓名 <span class="text-red-500">*</span></label>
+            <input data-f="real_name" class="field-input" value="${UI.esc(u?.real_name || '')}"></div>
+          <div><label class="field-label">角色 <span class="text-red-500">*</span></label>
+            <select data-f="role" class="field-input">
+              <option value="DOCTOR" ${u?.role === 'DOCTOR' ? 'selected' : ''}>医生（可提交/归档报告单）</option>
+              <option value="NURSE" ${u?.role === 'NURSE' ? 'selected' : ''}>护士（仅可保存草稿）</option>
+            </select></div>
+          <div><label class="field-label">联系电话</label>
+            <input data-f="phone" class="field-input" value="${UI.esc(u?.phone || '')}"></div>
+          ${isNew ? `<div class="col-span-2"><label class="field-label">初始密码 <span class="text-red-500">*</span></label>
+            <input data-f="password" class="field-input" value="Spt@123456" placeholder="至少 8 位">
+            <p class="text-xs text-slate-400 mt-1">默认强制首次登录修改密码</p></div>` : ''}
+          <label class="col-span-2 flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" data-active ${u?.is_active !== 0 ? 'checked' : ''} class="rounded"> 启用该账号
+          </label>
+        </div>`,
+      footer: `<button data-cancel class="btn btn-ghost">取消</button>
+               <button data-ok class="btn btn-primary"><i class="fas fa-check"></i>${isNew ? '创建' : '保存'}</button>`,
+      onMount(root, close) {
+        root.querySelector('[data-cancel]').addEventListener('click', close)
+        root.querySelector('[data-ok]').addEventListener('click', async () => {
+          const p = { is_active: root.querySelector('[data-active]').checked }
+          root.querySelectorAll('[data-f]').forEach(el => p[el.dataset.f] = el.value.trim())
+          if (!p.real_name) return UI.toast('请填写真实姓名', 'warn')
+          try {
+            UI.loading(true, '保存中…')
+            if (isNew) {
+              if (!p.username) { UI.loading(false); return UI.toast('请填写用户名', 'warn') }
+              if (!p.password || p.password.length < 8) { UI.loading(false); return UI.toast('初始密码至少 8 位', 'warn') }
+              await API.post('/api/admin/accounts', Object.assign({ hospital_id: accHospital }, p))
+            } else {
+              await API.put('/api/admin/accounts/' + u.id, p)
+            }
+            UI.loading(false); close(); UI.toast(isNew ? '账号已创建' : '账号已更新', 'success'); loadAccounts()
+          } catch (e) { UI.loading(false); UI.toast(e.message, 'error') }
+        })
+      }
+    })
+  }
+
+  function resetPwd(id) {
+    UI.modal({
+      title: '<i class="fas fa-key text-brand-500 mr-2"></i>重置密码',
+      size: 'sm',
+      body: `<label class="field-label">新密码（至少 8 位）</label>
+        <input data-pwd class="field-input" value="Spt@123456">
+        <p class="text-xs text-slate-500 mt-2"><i class="fas fa-circle-info mr-1"></i>重置后该账号需在首次登录时修改密码，且现有登录会话将全部失效。</p>`,
+      footer: `<button data-cancel class="btn btn-ghost">取消</button><button data-ok class="btn btn-primary">确认重置</button>`,
+      onMount(root, close) {
+        root.querySelector('[data-cancel]').addEventListener('click', close)
+        root.querySelector('[data-ok]').addEventListener('click', async () => {
+          const pwd = root.querySelector('[data-pwd]').value
+          if (pwd.length < 8) return UI.toast('密码至少 8 位', 'warn')
+          try {
+            await API.post(`/api/admin/accounts/${id}/reset-password`, { password: pwd })
+            close(); UI.toast('密码已重置', 'success'); loadAccounts()
+          } catch (e) { UI.toast(e.message, 'error') }
+        })
+      }
+    })
+  }
+
+  /* ============================ 审计日志 ============================ */
+  let auditQ = { page: 1, size: 20 }
+
+  async function auditLog(body) {
+    let hs = []
+    try { hs = (await API.get('/api/admin/hospitals')).data } catch {}
+    body.innerHTML = `
+      <div class="space-y-4">
+        <div class="card p-4 grid md:grid-cols-6 gap-3 items-end">
+          <div><label class="field-label">医院</label>
+            <select id="au-h" class="field-input"><option value="">全部医院</option>
+              ${hs.map(h => `<option value="${h.id}">${UI.esc(h.name)}</option>`).join('')}</select></div>
+          <div><label class="field-label">操作类型</label><input id="au-a" class="field-input" placeholder="如 LOGIN / REPORT"></div>
+          <div><label class="field-label">操作人</label><input id="au-actor" class="field-input" placeholder="姓名"></div>
+          <div><label class="field-label">起始日期</label><input id="au-from" type="date" class="field-input"></div>
+          <div><label class="field-label">截止日期</label><input id="au-to" type="date" class="field-input"></div>
+          <div class="flex gap-2">
+            <button id="au-search" class="btn btn-primary flex-1"><i class="fas fa-magnifying-glass"></i>查询</button>
+            <button id="au-export" class="btn btn-ghost" title="导出 CSV"><i class="fas fa-download"></i></button>
+          </div>
+        </div>
+        <div class="card p-0 overflow-hidden">
+          <div id="au-list" class="overflow-x-auto"></div>
+          <div id="au-pager" class="px-5 pb-4"></div>
+        </div>
+      </div>`
+    const collect = () => {
+      auditQ = {
+        page: auditQ.page, size: 20,
+        hospital_id: document.getElementById('au-h').value,
+        action: document.getElementById('au-a').value.trim(),
+        actor: document.getElementById('au-actor').value.trim(),
+        from: document.getElementById('au-from').value,
+        to: document.getElementById('au-to').value
+      }
+    }
+    document.getElementById('au-search').addEventListener('click', () => { auditQ.page = 1; collect(); loadAudit() })
+    document.getElementById('au-export').addEventListener('click', async () => {
+      collect()
+      const r = await API.get('/api/admin/audit', Object.assign({}, auditQ, { size: 200 }))
+      const rows = r.data.map(x => [x.created_at, x.hospital_name || '', x.actor_name || '', UI.fmt.role(x.actor_role), x.action, x.resource_type || '', x.resource_id || '', x.ip || ''])
+      const ws = XLSX.utils.aoa_to_sheet([['时间', '医院', '操作人', '角色', '操作', '资源类型', '资源ID', 'IP'], ...rows])
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '审计日志')
+      XLSX.writeFile(wb, `审计日志_${dayjs().format('YYYY-MM-DD')}.xlsx`)
+    })
+    loadAudit()
+  }
+
+  /* 「资源」列原先直接显示数据库表名（spt_report / user_account …），
+   * 属于实现细节外泄，且使用者读不懂。 */
+  const RESOURCE_LABEL = {
+    hospital: '医院', user_account: '账号', patient: '患者',
+    spt_report: '报告单', spt_template: '模版', spt_photo: '照片',
+    allergen_catalog: '过敏原库', device_bind: '采集设备',
+    capture_setting: '采集设置', export_job: '导出任务'
+  }
+
+  const ACTION_LABEL = {
+    LOGIN_SUCCESS: ['登录成功', 'text-emerald-600'], LOGIN_FAILED: ['登录失败', 'text-red-600'],
+    ACCOUNT_LOCKED: ['账号锁定', 'text-red-600'], LOGOUT: ['退出登录', 'text-slate-500'],
+    CHANGE_PASSWORD: ['修改密码', 'text-amber-600'], RESET_PASSWORD: ['重置密码', 'text-amber-600'],
+    CREATE_HOSPITAL: ['新增医院', 'text-brand-600'], UPDATE_HOSPITAL: ['修改医院', 'text-brand-600'], DELETE_HOSPITAL: ['删除医院', 'text-red-600'],
+    CREATE_ACCOUNT: ['新增账号', 'text-brand-600'], UPDATE_ACCOUNT: ['修改账号', 'text-brand-600'], DELETE_ACCOUNT: ['删除账号', 'text-red-600'],
+    CREATE_PATIENT: ['新建患者', 'text-emerald-600'], UPDATE_PATIENT: ['修改患者', 'text-amber-600'], DELETE_PATIENT: ['删除患者', 'text-red-600'],
+    BULK_IMPORT_PATIENT: ['批量导入患者', 'text-emerald-600'],
+    CREATE_REPORT_DRAFT: ['创建报告草稿', 'text-slate-600'], UPDATE_REPORT: ['修改报告单', 'text-amber-600'],
+    SUBMIT_REPORT: ['提交报告单', 'text-emerald-600'], ARCHIVE_REPORT: ['归档报告单', 'text-indigo-600'], DELETE_REPORT: ['删除报告单', 'text-red-600'],
+    ADD_REPORT_PHOTO: ['新增照片', 'text-cyan-600'], DELETE_REPORT_PHOTO: ['删除照片', 'text-red-600'],
+    CREATE_TEMPLATE: ['新建模版', 'text-brand-600'], UPDATE_TEMPLATE: ['修改模版', 'text-amber-600'],
+    SOFT_DELETE_TEMPLATE: ['删除模版', 'text-red-600'], RESTORE_TEMPLATE: ['恢复模版', 'text-emerald-600'], DUPLICATE_TEMPLATE: ['复制模版', 'text-brand-600'],
+    OCR_VISIT_CARD: ['识别就诊卡', 'text-cyan-600'], BIND_WEBCAM: ['登记摄像头', 'text-cyan-600'],
+    BIND_BRIDGE_DEVICE: ['绑定高拍仪', 'text-cyan-600'], REVOKE_DEVICE: ['解绑设备', 'text-red-600'],
+    CREATE_PAIR_CODE: ['生成配对码', 'text-slate-600'], UPDATE_CAPTURE_SETTING: ['修改采集设置', 'text-slate-600'],
+    EXPORT_REPORTS: ['导出报告单', 'text-violet-600'], CREATE_EXPORT_JOB: ['创建导出任务', 'text-violet-600'],
+    FINISH_EXPORT_JOB: ['导出任务完成', 'text-violet-600'], DOWNLOAD_EXPORT: ['下载导出文件', 'text-violet-600'],
+    PASSWORD_RESET_REQUEST: ['密码重置申请', 'text-amber-600']
+  }
+
+  /* ---------------- 日志详情的文字化 ----------------
+   * 原实现直接把 before_json / after_json 用 <pre> 打在深色块里，
+   * 等于把数据库字段名、内部 ID、表结构摆给使用者看：
+   *   一是泄露实现细节（字段名即表结构），
+   *   二是护士/医生根本读不懂，审计功能形同没有。
+   * 这里改为「字段中文名 + 人话值 + 变化方向」的表述。 */
+
+  /* 字段中文名。审计只记录业务字段，逐个给出对应说法。 */
+  const FIELD_LABEL = {
+    name: '名称', code: '编码', address: '地址', phone: '联系电话',
+    logo_url: '医院标识图', is_active: '启用状态', is_deleted: '删除标记',
+    username: '登录用户名', real_name: '姓名', role: '角色',
+    password_hash: '密码', must_change_password: '要求下次登录改密',
+    hospital_id: '所属医院', hospital_name: '所属医院',
+    patient_id: '患者', patient_name: '患者姓名', template_id: '使用模版',
+    status: '状态', report_id: '报告单', visit_card_no: '就诊卡号',
+    gender: '性别', birth_date: '出生日期', age: '年龄',
+    kind: '过敏原类别', mode: '重置方式', total: '项目总数', count: '数量',
+    from: '原分组名', to: '新分组名', order: '排序',
+    label: '设备名称', device: '拍摄设备', device_id: '设备编号',
+    device_model: '设备型号', size: '文件大小', format: '文件格式',
+    scope: '导出范围', filter: '筛选条件', pos_count: '阳性项目数',
+    affected_reports: '关联历史报告单', attempts: '连续失败次数',
+    reason: '原因', symptoms: '症状', notes: '备注',
+    doctor_id: '开单医生', report_date: '报告日期', sort_order: '排序'
+  }
+
+  /* 部分字段的值本身也是内部代码，要翻成人话 */
+  const VALUE_LABEL = {
+    role: { PLATFORM_ADMIN: '平台管理员', DOCTOR: '医生', NURSE: '护士' },
+    status: { DRAFT: '草稿', SUBMITTED: '已提交', ARCHIVED: '已归档' },
+    gender: { M: '男', F: '女', UNKNOWN: '未知' },
+    kind: { POSITIVE_CONTROL: '阳性对照', NEGATIVE_CONTROL: '阴性对照', ALLERGEN: '过敏原' },
+    reason: {
+      NOT_FOUND: '用户名不存在',
+      /* HOSPITAL_MISMATCH 是「登录页需选医院」时代的原因码。登录已改为按账号自动
+       * 匹配医院，新日志不会再产生它，但历史日志仍需能读懂，故保留翻译。 */
+      HOSPITAL_MISMATCH: '所选医院与账号不符',
+      HOSPITAL_NOT_FOUND: '账号所属医院不存在', HOSPITAL_DISABLED: '所属医院已停用',
+      BAD_PASSWORD: '密码错误', LOCKED: '账号已锁定', INACTIVE: '账号已停用'
+    },
+    mode: { replace: '整体替换', append: '追加', reset: '恢复默认' },
+    scope: { hospital: '本医院', all: '全部医院' }
+  }
+
+  /* 不该出现在界面上的字段：内部主键与凭据 */
+  const HIDDEN_FIELDS = new Set(['id', 'password_hash', 'refresh_token', 'token',
+    'pair_code', 'created_at', 'updated_at'])
+
+  function fieldName(k) {
+    return FIELD_LABEL[k] || k
+  }
+
+  /* 把一个值渲染成人能读的文字 */
+  function fieldValue(k, v) {
+    if (v === null || v === undefined || v === '') return '（空）'
+    /* 这三个字段在库里是 0/1，接口提交上来却是 true/false。
+     * 必须先按字段名归一化，否则同一个「启用」会被渲染成「启用」和「是」两种说法，
+     * 让没变化的字段也被判成变更（曾出现「启用状态：启用 → 是」）。 */
+    if (k === 'is_active') return Number(v) ? '启用' : '停用'
+    if (k === 'is_deleted') return Number(v) ? '已删除' : '未删除'
+    if (k === 'must_change_password') return Number(v) ? '是' : '否'
+    const map = VALUE_LABEL[k]
+    if (map && map[v] !== undefined) return map[v]
+    if (typeof v === 'boolean') return v ? '是' : '否'
+    if (k === 'size') {
+      const n = Number(v)
+      if (!isNaN(n)) return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'
+    }
+    if (Array.isArray(v)) return v.length ? `共 ${v.length} 项` : '（空）'
+    if (typeof v === 'object') {
+      // 筛选条件之类的嵌套对象：摊平成「键＝值」的短句，而不是打印 JSON
+      const parts = Object.entries(v)
+        .filter(([kk, vv]) => !HIDDEN_FIELDS.has(kk) && vv !== null && vv !== undefined && vv !== '')
+        .map(([kk, vv]) => `${fieldName(kk)}：${fieldValue(kk, vv)}`)
+      return parts.length ? parts.join('；') : '（无）'
+    }
+    const str = String(v)
+    // 兜底：内部 UUID 不适合直接展示，也没有阅读价值
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) return '（系统记录）'
+    return str
+  }
+
+  function parseJson(x) {
+    if (x === null || x === undefined || x === '') return null
+    if (typeof x === 'object') return x
+    try { return JSON.parse(x) } catch { return null }
+  }
+
+  /* 生成变更明细行 */
+  function changeRows(before, after) {
+    const b = parseJson(before) || {}
+    const a = parseJson(after) || {}
+    const keys = [...new Set([...Object.keys(b), ...Object.keys(a)])]
+      .filter(k => !HIDDEN_FIELDS.has(k))
+    const rows = []
+    for (const k of keys) {
+      const hasB = Object.prototype.hasOwnProperty.call(b, k)
+      const hasA = Object.prototype.hasOwnProperty.call(a, k)
+      const vb = hasB ? fieldValue(k, b[k]) : null
+      const va = hasA ? fieldValue(k, a[k]) : null
+      if (hasB && hasA) {
+        if (vb === va) continue                      // 没变的字段不占版面
+        rows.push({ name: fieldName(k), kind: 'change', from: vb, to: va })
+      } else if (hasA) {
+        if (va === '（空）') continue                // 新增了个空值，没有信息量
+        rows.push({ name: fieldName(k), kind: 'add', to: va })
+      }
+      /* 只出现在 before 的字段：after_json 是「本次提交的字段」而非整行，
+       * 缺席只说明这次没有改它，不能当成被清空来报（会误导审计者）。 */
+    }
+    return rows
+  }
+
+  function auditDetailBody(x) {
+    const rows = changeRows(x.before_json, x.after_json)
+    const [label] = ACTION_LABEL[x.action] || [x.action]
+
+    const meta = `
+      <dl class="text-sm grid grid-cols-[5.5rem_1fr] gap-y-2 gap-x-3 mb-4">
+        <dt class="text-slate-400">操作</dt><dd class="font-medium text-ink-800">${UI.esc(label)}</dd>
+        <dt class="text-slate-400">操作人</dt><dd>${UI.esc(x.actor_name || '—')}${x.actor_role ? `（${UI.esc(UI.fmt.role(x.actor_role))}）` : ''}</dd>
+        <dt class="text-slate-400">所属医院</dt><dd>${UI.esc(x.hospital_name || '—')}</dd>
+        <dt class="text-slate-400">时间</dt><dd>${UI.esc(UI.fmt.datetime(x.created_at))}</dd>
+        <dt class="text-slate-400">来源地址</dt><dd class="text-slate-500">${UI.esc(x.ip || '—')}</dd>
+      </dl>`
+
+    if (!rows.length) {
+      return meta + `<p class="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2.5">
+        本次操作未产生字段内容变化。</p>`
+    }
+
+    const body = rows.map(r => {
+      if (r.kind === 'change') {
+        return `<tr>
+          <td class="align-top py-2 pr-3 text-slate-500 whitespace-nowrap">${UI.esc(r.name)}</td>
+          <td class="align-top py-2 pr-2 text-slate-400 line-through">${UI.esc(r.from)}</td>
+          <td class="align-top py-2 pr-2 text-slate-300 w-4"><i class="fas fa-arrow-right text-[10px]"></i></td>
+          <td class="align-top py-2 text-ink-800 font-medium">${UI.esc(r.to)}</td>
+        </tr>`
+      }
+      if (r.kind === 'add') {
+        return `<tr>
+          <td class="align-top py-2 pr-3 text-slate-500 whitespace-nowrap">${UI.esc(r.name)}</td>
+          <td class="align-top py-2 pr-2 text-slate-400" colspan="2">设为</td>
+          <td class="align-top py-2 text-ink-800 font-medium">${UI.esc(r.to)}</td>
+        </tr>`
+      }
+      /* changeRows 现在只产出 change / add 两种；这里兜底防止将来新增类型时静默丢行 */
+      return `<tr>
+        <td class="align-top py-2 pr-3 text-slate-500 whitespace-nowrap">${UI.esc(r.name)}</td>
+        <td class="align-top py-2 text-ink-800" colspan="3">${UI.esc(r.to || r.from || '（空）')}</td>
+      </tr>`
+    }).join('')
+
+    return meta + `
+      <p class="field-label">变更明细</p>
+      <div class="border border-slate-200 rounded-lg overflow-hidden">
+        <table class="w-full text-sm"><tbody class="divide-y divide-slate-100">
+          ${body}
+        </tbody></table>
+      </div>`
+  }
+
+  async function loadAudit() {
+    const el = document.getElementById('au-list')
+    el.innerHTML = '<p class="text-center py-12 text-slate-400 text-sm"><i class="fas fa-circle-notch fa-spin"></i> 加载中…</p>'
+    try {
+      const r = await API.get('/api/admin/audit', auditQ)
+      if (!r.data.length) { el.innerHTML = UI.emptyState('fa-clipboard-list', '暂无日志', '调整筛选条件重试'); document.getElementById('au-pager').innerHTML = ''; return }
+      el.innerHTML = `<table class="data-table"><thead><tr>
+          <th>时间</th><th>医院</th><th>操作人</th><th>角色</th><th>操作</th><th>资源</th><th>IP</th><th class="text-right">详情</th>
+        </tr></thead><tbody>
+        ${r.data.map((x, i) => {
+          const [label, color] = ACTION_LABEL[x.action] || [x.action, 'text-slate-600']
+          return `<tr>
+            <td class="text-xs text-slate-500 whitespace-nowrap">${UI.fmt.datetime(x.created_at)}</td>
+            <td class="text-xs">${UI.fmt.empty(x.hospital_name)}</td>
+            <td class="text-sm font-medium">${UI.fmt.empty(x.actor_name)}</td>
+            <td class="text-xs">${x.actor_role ? UI.fmt.role(x.actor_role) : '—'}</td>
+            <td class="text-sm font-medium ${color}">${UI.esc(label)}</td>
+            <td class="text-xs text-slate-500">${UI.esc(RESOURCE_LABEL[x.resource_type] || x.resource_type || '—')}</td>
+            <td class="text-xs font-mono text-slate-400">${UI.fmt.empty(x.ip)}</td>
+            <td class="text-right"><button data-i="${i}" class="btn btn-xs btn-ghost" title="查看详情"><i class="fas fa-eye"></i></button></td>
+          </tr>`
+        }).join('')}</tbody></table>`
+      /* 详情不再传 JSON 字符串到 DOM 属性上（那样等于把原始数据摊在页面源码里），
+       * 改为用行下标回查内存中的记录。 */
+      el.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => {
+        const x = r.data[Number(b.dataset.i)]
+        if (!x) return
+        UI.modal({ title: '日志详情', size: 'md', body: auditDetailBody(x) })
+      }))
+      const pg = document.getElementById('au-pager'); pg.innerHTML = ''
+      pg.appendChild(UI.pager(r.total, r.page, r.size, p => { auditQ.page = p; loadAudit() }))
+    } catch (e) { el.innerHTML = `<p class="text-red-600 text-sm py-10 text-center">${UI.esc(e.message)}</p>` }
+  }
+
+  return { overview, hospitals, accounts, auditLog, hospitalEditor }
+})()

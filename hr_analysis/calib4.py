@@ -1,0 +1,23 @@
+import numpy as np
+mB=np.array([88,88,102,111,101,94,104,81,86,77,86,107,104,106,112,105],float)
+dB=np.array([79,79, 77, 75, 74,81, 82,84,75,76,88, 78, 74, 74, 78, 79],float)
+mA=np.array([90,107,106,88,85,101],float); dA=np.array([99,99,97,97,97,98],float)
+print("=== 模型到底有没有跟随真值? ===")
+r=np.corrcoef(mB,dB)[0,1]
+print("受试者B  r = %+.3f  (n=16, 真值有%.0fbpm波动, 这次r有意义)"%(r,dB.ptp()))
+print("-> 相关性%s"%("为负/近零, 模型输出与真实心率【无关】" if r<0.3 else "存在"))
+print()
+b,a=np.polyfit(dB,mB,1)
+print("回归 m = %.2f*d + %.1f   (若模型准应为 m=1.00*d+0)"%(b,a))
+print("斜率%.2f -> 真值每变化10bpm, 模型只跟%.1fbpm"%(b,b*10))
+print()
+print("=== 两位受试者合并看 ===")
+m=np.concatenate([mA,mB]); d=np.concatenate([dA,dB])
+print("全部n=%d  MAE=%.2f  Bias=%+.2f  ±5命中=%.0f%%"%(len(m),np.abs(m-d).mean(),(m-d).mean(),100*(np.abs(m-d)<=5).mean()))
+print()
+print(" 受试者   真值均值   模型均值   |模型-95|   |模型-真值|")
+for n,mm,dd in [("A",mA,dA),("B",mB,dB)]:
+    print("   %s      %6.1f    %6.1f     %5.1f       %5.1f"%(n,dd.mean(),mm.mean(),abs(mm.mean()-95),abs(mm.mean()-dd.mean())))
+print()
+print("两组真值差 %.1f bpm, 模型均值只差 %.1f bpm"%(abs(dA.mean()-dB.mean()),abs(mA.mean()-mB.mean())))
+print("-> 模型几乎【不区分】两个人, 都锁在带中心95附近")

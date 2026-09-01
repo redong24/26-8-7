@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HiKO数字生理感知 - 侧边导航设计效果</title>
+<style>
+:root{
+  --bg-deep:#050d24;
+  --bg-panel:rgba(10,25,60,.75);
+  --bd:rgba(0,180,255,.35);
+  --cyan:#00d4ff;
+  --cyan-dim:#3b9fd8;
+  --txt:#cfe6ff;
+  --txt-dim:#7fa7cc;
+  --green:#00e58a;
+  --orange:#ffb340;
+  --pink:#ff6b9d;
+  --purple:#a78bfa;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei","PingFang SC",sans-serif}
+html,body{height:100%;overflow:hidden;background:var(--bg-deep);color:var(--txt)}
+body{background:
+  radial-gradient(1200px 600px at 70% 110%, rgba(0,80,200,.25), transparent 60%),
+  radial-gradient(900px 500px at 15% 90%, rgba(0,120,255,.15), transparent 60%),
+  linear-gradient(180deg,#04102e 0%,#050d24 45%,#071a3d 100%)}
+
+/* ============ 顶部标题栏 ============ */
+.header{position:relative;height:64px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(90deg,transparent,rgba(0,100,255,.18) 30%,rgba(0,140,255,.3) 50%,rgba(0,100,255,.18) 70%,transparent);
+  border-bottom:1px solid rgba(0,180,255,.25)}
+.header h1{font-size:26px;letter-spacing:4px;color:#eaf6ff;
+  text-shadow:0 0 18px rgba(0,180,255,.9),0 0 40px rgba(0,120,255,.5)}
+.header .sub{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:var(--txt-dim);letter-spacing:2px}
+.header .status{position:absolute;right:24px;top:50%;transform:translateY(-50%);
+  font-size:12px;color:var(--green);display:flex;gap:16px;align-items:center}
+.header .status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);display:inline-block;margin-right:6px;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+.header .deco{position:absolute;top:12px;width:180px;height:40px;opacity:.5;
+  background:repeating-linear-gradient(90deg,rgba(0,180,255,.5) 0 3px,transparent 3px 12px)}
+.header .deco.l{left:20px;clip-path:polygon(0 0,100% 20%,100% 80%,0 100%)}
+.header .deco.r{right:120px;clip-path:polygon(0 20%,100% 0,100% 100%,0 80%)}
+
+/* ============ 主体布局 ============ */
+.main{display:flex;height:calc(100% - 64px)}
+
+/* ============ 侧边导航栏 ============ */
+.sidenav{width:86px;flex:0 0 86px;padding:18px 8px;display:flex;flex-direction:column;gap:14px;
+  background:linear-gradient(180deg,rgba(5,20,55,.9),rgba(8,28,70,.85));
+  border-right:1px solid rgba(0,180,255,.25);z-index:60;position:relative}
+.sidenav::before{content:"";position:absolute;top:0;right:-1px;bottom:0;width:1px;
+  background:linear-gradient(180deg,transparent,var(--cyan),transparent);opacity:.6}
+.nav-item{position:relative;padding:14px 6px 12px;border-radius:8px;cursor:pointer;text-align:center;
+  border:1px solid rgba(0,180,255,.18);background:rgba(0,60,150,.12);
+  transition:all .25s ease;user-select:none}
+.nav-item .ico{font-size:22px;display:block;margin-bottom:6px;filter:drop-shadow(0 0 6px rgba(0,180,255,.6))}
+.nav-item .txt{font-size:11px;line-height:1.5;color:var(--txt-dim);letter-spacing:1px}
+.nav-item:hover{background:rgba(0,120,255,.22);border-color:var(--cyan);transform:translateX(2px)}
+.nav-item:hover .txt{color:#fff}
+.nav-item.active{background:linear-gradient(135deg,rgba(0,140,255,.4),rgba(0,80,200,.25));
+  border-color:var(--cyan);box-shadow:0 0 16px rgba(0,180,255,.35),inset 0 0 20px rgba(0,180,255,.12)}
+.nav-item.active .txt{color:#fff;font-weight:bold}
+.nav-item.active::after{content:"";position:absolute;left:-9px;top:20%;bottom:20%;width:3px;
+  background:var(--cyan);border-radius:2px;box-shadow:0 0 10px var(--cyan)}
+
+/* ============ 首页内容(状态感知) 简化示意 ============ */
+.dashboard{flex:1;position:relative;padding:14px;display:grid;
+  grid-template-columns:250px 1fr 1fr 300px;grid-template-rows:1fr 1fr 1fr;gap:12px;overflow:hidden}
+.card{background:var(--bg-panel);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;
+  position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;top:0;left:0;width:40px;height:2px;background:var(--cyan);
+  box-shadow:0 0 8px var(--cyan)}
+.card h3{font-size:13px;color:var(--cyan);margin-bottom:8px;letter-spacing:1px}
+.card .ph{color:var(--txt-dim);font-size:11px;line-height:1.8}
+.big-num{font-size:34px;color:#fff;text-shadow:0 0 14px rgba(0,200,255,.7);font-weight:bold}
+.unit{font-size:11px;color:var(--txt-dim)}
+.face-box{grid-row:span 1;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.face-ph{width:88%;aspect-ratio:4/3.4;border:1px solid var(--bd);border-radius:4px;
+  background:linear-gradient(135deg,#123 0%,#0a1a35 100%);display:flex;align-items:center;justify-content:center;
+  color:var(--txt-dim);font-size:12px}
+.metrics-row{grid-column:span 2;display:flex;gap:10px}
+.metrics-row .m{flex:1;text-align:center;border-right:1px dashed rgba(0,180,255,.2);padding:6px 4px}
+.metrics-row .m:last-child{border-right:none}
+.metrics-row .lab{font-size:12px;color:var(--cyan);margin-bottom:6px}
+.wave{grid-column:span 2}
+.wave svg{width:100%;height:calc(100% - 24px)}
+.bar-list .row{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:11px}
+.bar-list .row .name{width:44px;color:var(--txt-dim)}
+.bar-list .bar{flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+.bar-list .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#0af,#0fe)}
+.bar-list .val{width:34px;text-align:right;color:var(--txt)}
+
+/* ============ 弹窗遮罩 ============ */
+.overlay{position:fixed;inset:0;top:64px;left:86px;background:rgba(2,8,25,.55);
+  backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .3s;z-index:50}
+.overlay.show{opacity:1;pointer-events:auto}
+
+/* ============ 弹窗面板(从左往右滑出) ============ */
+.popup{position:fixed;top:64px;left:86px;bottom:0;width:min(880px,78vw);z-index:55;
+  background:linear-gradient(135deg,rgba(8,22,58,.97),rgba(5,15,40,.97));
+  border-right:1px solid var(--cyan);box-shadow:20px 0 60px rgba(0,0,0,.6),inset -1px 0 30px rgba(0,140,255,.15);
+  transform:translateX(-105%);transition:transform .38s cubic-bezier(.22,.9,.3,1);
+  display:flex;flex-direction:column;overflow:hidden}
+.popup.show{transform:translateX(0)}
+.popup .p-head{flex:0 0 56px;display:flex;align-items:center;padding:0 22px;gap:12px;
+  background:linear-gradient(90deg,rgba(0,120,255,.25),transparent 70%);
+  border-bottom:1px solid rgba(0,180,255,.3)}
+.popup .p-head .p-ico{font-size:22px}
+.popup .p-head h2{font-size:18px;color:#fff;letter-spacing:2px;
+  text-shadow:0 0 12px rgba(0,180,255,.8)}
+.popup .p-head .close{margin-left:auto;width:30px;height:30px;border:1px solid var(--bd);border-radius:4px;
+  color:var(--cyan);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;
+  transition:.2s}
+.popup .p-head .close:hover{background:rgba(0,180,255,.25);color:#fff}
+.popup .p-body{flex:1;overflow-y:auto;padding:18px 22px}
+.popup .p-body::-webkit-scrollbar{width:6px}
+.popup .p-body::-webkit-scrollbar-thumb{background:rgba(0,180,255,.35);border-radius:3px}
+
+/* 弹窗内通用组件 */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pcard{background:rgba(0,50,130,.15);border:1px solid rgba(0,180,255,.25);border-radius:6px;
+  padding:14px;margin-bottom:14px}
+.pcard h4{font-size:13px;color:var(--cyan);margin-bottom:12px;letter-spacing:1px;
+  padding-left:10px;border-left:3px solid var(--cyan)}
+.score-ring{display:flex;align-items:center;gap:20px}
+.ring{position:relative;width:110px;height:110px;flex:0 0 110px}
+.ring svg{transform:rotate(-90deg)}
+.ring .rv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .rv b{font-size:26px;color:#fff}
+.ring .rv span{font-size:10px;color:var(--txt-dim)}
+.tag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;margin:2px}
+.tag.g{background:rgba(0,229,138,.15);color:var(--green);border:1px solid rgba(0,229,138,.4)}
+.tag.o{background:rgba(255,179,64,.15);color:var(--orange);border:1px solid rgba(255,179,64,.4)}
+.tag.c{background:rgba(0,212,255,.12);color:var(--cyan);border:1px solid rgba(0,212,255,.4)}
+.kv{display:flex;justify-content:space-between;font-size:12px;padding:7px 0;
+  border-bottom:1px dashed rgba(0,180,255,.15)}
+.kv .k{color:var(--txt-dim)}
+.kv .v{color:#fff}
+.kv .v.ok{color:var(--green)}
+.kv .v.warn{color:var(--orange)}
+.hbar{margin:8px 0}
+.hbar .t{display:flex;justify-content:space-between;font-size:11px;color:var(--txt-dim);margin-bottom:4px}
+.hbar .t b{color:#fff}
+.hbar .b{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.hbar .b i{display:block;height:100%;border-radius:4px}
+.advice{background:rgba(0,229,138,.08);border:1px solid rgba(0,229,138,.3);border-radius:6px;
+  padding:12px 14px;font-size:12px;line-height:2;color:#d8ffe f}
+.advice li{margin-left:18px;color:var(--txt)}
+.advice b{color:var(--green)}
+.scene-card{background:rgba(0,50,130,.15);border:1px solid rgba(0,180,255,.25);border-radius:8px;
+  padding:16px;cursor:pointer;transition:.25s;text-align:center}
+.scene-card:hover{border-color:var(--cyan);transform:translateY(-3px);
+  box-shadow:0 8px 24px rgba(0,140,255,.25)}
+.scene-card .si{font-size:34px;margin-bottom:10px;display:block}
+.scene-card h5{font-size:14px;color:#fff;margin-bottom:6px}
+.scene-card p{font-size:11px;color:var(--txt-dim);line-height:1.7}
+.scene-card .st{margin-top:10px}
+.plan-tl{position:relative;padding-left:20px}
+.plan-tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;
+  background:linear-gradient(180deg,var(--cyan),rgba(0,180,255,.1))}
+.plan-tl .item{position:relative;margin-bottom:14px;font-size:12px}
+.plan-tl .item::before{content:"";position:absolute;left:-19px;top:4px;width:8px;height:8px;
+  border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.plan-tl .time{color:var(--cyan);font-weight:bold;margin-right:8px}
+.plan-tl .desc{color:var(--txt)}
+.radar-wrap{display:flex;align-items:center;justify-content:center}
+.face-map{display:flex;align-items:center;gap:18px}
+.face-svg{flex:0 0 150px}
+.footer-note{position:fixed;bottom:8px;right:14px;font-size:10px;color:rgba(130,170,220,.4);z-index:5}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="deco l"></div><div class="deco r"></div>
+  <h1>HiKO数字生理感知</h1>
+  <div class="sub">AI生理感知与数字健康联合实验室</div>
+  <div class="status"><span><span class="dot"></span>检测中</span><span>01:26</span><span>FPS 15</span></div>
+</div>
+
+<div class="main">
+  <!-- ===== 侧边导航栏 ===== -->
+  <nav class="sidenav">
+    <div class="nav-item active" data-panel="home"><span class="ico">📡</span><span class="txt">状态<br>感知</span></div>
+    <div class="nav-item" data-panel="psy"><span class="ico">🧠</span><span class="txt">心理综合<br>评估</span></div>
+    <div class="nav-item" data-panel="phy"><span class="ico">❤️</span><span class="txt">生理健康<br>评估</span></div>
+    <div class="nav-item" data-panel="skin"><span class="ico">✨</span><span class="txt">肌肤健康<br>评估</span></div>
+    <div class="nav-item" data-panel="scene"><span class="ico">🎯</span><span class="txt">特殊场景<br>评估</span></div>
+    <div class="nav-item" data-panel="plan"><span class="ico">📋</span><span class="txt">个人终端<br>健康方案</span></div>
+  </nav>
+
+  <!-- ===== 首页(状态感知)简化示意, 实际项目保持现有页面不动 ===== -->
+  <div class="dashboard">
+    <div class="card face-box"><div class="face-ph">📷 摄像头画面<br>(人脸检测中)</div></div>
+    <div class="card metrics-row" style="grid-column:2/4">
+      <div class="m"><div class="lab">心率</div><div class="big-num">78</div><div class="unit">bpm · 正常</div></div>
+      <div class="m"><div class="lab">血氧</div><div class="big-num">97</div><div class="unit">SpO₂% · 正常</div></div>
+      <div class="m"><div class="lab">呼吸率</div><div class="big-num">25.5</div><div class="unit">次/分 · 偏高</div></div>
+      <div class="m"><div class="lab">血压</div><div class="big-num">--</div><div class="unit">mmHg</div></div>
+      <div class="m"><div class="lab">HRV·SDNN</div><div class="big-num">--</div><div class="unit">ms</div></div>
+    </div>
+    <div class="card"><h3>心理评估状态</h3>
+      <div class="ph">提示信息：状态正常<br>人脸检测：已检测到人脸<br>视线状态：注视中·正视<br>Top AU：下颌下垂 0.056</div>
+    </div>
+    <div class="card bar-list" style="grid-row:span 2"><h3>情绪状态 · 😐 平静 41%</h3>
+      <div class="row"><span class="name">平静</span><div class="bar"><i style="width:41%"></i></div><span class="val">41%</span></div>
+      <div class="row"><span class="name">愉快</span><div class="bar"><i style="width:8%"></i></div><span class="val">8%</span></div>
+      <div class="row"><span class="name">悲伤</span><div class="bar"><i style="width:7%"></i></div><span class="val">7%</span></div>
+      <div class="row"><span class="name">惊讶</span><div class="bar"><i style="width:15%"></i></div><span class="val">15%</span></div>
+      <div class="row"><span class="name">恐惧</span><div class="bar"><i style="width:7%"></i></div><span class="val">7%</span></div>
+      <div class="row"><span class="name">厌恶</span><div class="bar"><i style="width:12%"></i></div><span class="val">12%</span></div>
+      <div class="row"><span class="name">愤怒</span><div class="bar"><i style="width:4%"></i></div><span class="val">4%</span></div>
+      <div class="row"><span class="name">轻蔑</span><div class="bar"><i style="width:15%"></i></div><span class="val">15%</span></div>
+      <div class="ph" style="margin-top:8px">心理·放松 0.82 ｜ 心理·犹豫 0.11 ｜ 心理·紧张 0.07</div>
+    </div>
+    <div class="card wave"><h3>rPPG 波形 · 75.35 BPM</h3>
+      <svg viewBox="0 0 600 120" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#00e58a" stroke-width="2" points="0,80 20,60 40,90 60,30 80,95 100,55 120,75 140,25 160,90 180,60 200,80 220,35 240,95 260,50 280,70 300,28 320,88 340,58 360,78 380,32 400,92 420,52 440,72 460,26 480,90 500,60 520,80 540,34 560,94 580,55 600,75"/>
+        <polyline fill="none" stroke="#ffb340" stroke-width="1.5" points="0,70 100,68 200,72 300,69 400,71 500,68 600,70"/>
+      </svg>
+    </div>
+    <div class="card"><h3>面部表情 & Action Units</h3>
+      <div class="ph">主导：下颌下垂<br>唇角上扬 0.00 ｜ 脸颊上抬 0.00<br>皱眉 0.00 ｜ 双唇分开 0.30<br>唇紧张 0.00 ｜ 眉毛 0.00</div>
+    </div>
+    <div class="card"><h3>头姿 & 视线</h3>
+      <div class="ph">注视中·正视<br>Yaw -5.2° ｜ Pitch 0.2° ｜ Roll 0.0°<br>60s 偏移 4%</div>
+    </div>
+    <div class="card"><h3>注意力 · <span style="color:#fff;font-size:20px">76</span>/100</h3>
+      <div class="ph">眨眼 1.0/min ｜ PERCLOS 8.3%<br>注视稳定性 0.81 ｜ EAR 0.25/0.23<br>疲劳：正常</div>
+    </div>
+    <div class="card"><h3>异常状态检测 · <span style="color:var(--green)">正常</span></h3>
+      <div class="ph">视线偏移 4% ｜ 眨眼频率 正常<br>心率/血氧/HRV：正常<br><span style="color:var(--cyan)">建议：保持当前状态</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="footer-note">设计原型 · 点击左侧导航查看弹窗效果 · ESC 关闭</div>
+
+<script>
+// 弹窗内容将由 panels.js 注入
+</script>
+<script src="panels.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+certs/server.key
+_preview/
+_incoming/
+__pycache__/
+
+# audio_service 运行产物（模型权重 897MB / 日志 / 环境快照，均非源码）
+_audio_build/
+audio_service/__pycache__/
+*.bak_*
+
+# svc 运行产物（日志 / 锁 / 节流标记，均非源码）
+logs/

@@ -1,0 +1,1173 @@
+/* ===== 全局 ===== */
+* { -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+#login-view.flex, #app-view.flex, #loading-mask.flex { display: flex; }
+/* 上面这条是 ID 选择器，特异性高于 Tailwind 的 .hidden{display:none}，
+ * 而 #app-view 的静态 class 里就带着 flex，结果登录页下方会一直渲染出主应用外壳
+ * （侧边栏 + 空白内容区）。这里显式把 .hidden 的优先级补回来。 */
+#login-view.hidden, #app-view.hidden, #loading-mask.hidden { display: none !important; }
+
+/* ===== 侧栏导航 ===== */
+/* 导航项字号从 .875rem(14px) 提到 .9375rem(15px)，行高与内边距同步加大：
+ * 门诊在较远距离/侧视角度下看屏幕，14px 的中文导航偏小。 */
+.nav-item {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6875rem 0.75rem; border-radius: 0.5rem;
+  font-size: 0.9375rem; line-height: 1.4; cursor: pointer; transition: all .15s;
+}
+.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+.nav-item.active { background: #1f6feb; color: #fff; font-weight: 600; box-shadow: 0 4px 12px rgba(31,111,235,.35); }
+.nav-item i { width: 1.25rem; text-align: center; font-size: 1rem; }
+
+/* ===== 表格 ===== */
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.data-table thead th {
+  background: #f8fafc; color: #475569; font-weight: 600; text-align: left;
+  padding: 0.7rem 0.85rem; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+}
+.data-table tbody td { padding: 0.7rem 0.85rem; border-bottom: 1px solid #f1f5f9; }
+.data-table tbody tr:hover { background: #f8fafc; }
+
+/* ===== 报告单内容区：4 列 × N 行（复刻纸质单实物） =====
+ *
+ * 版式：一个「格子」= 检测项目名 + 序号 + 结果，四个格子并排成一行。
+ * 序号**横向排**（1 2 3 4 在第一行），由 JS 顺序铺入，靠 grid 的按行填充实现。
+ *
+ * 为什么用 CSS grid 而不是 <table>：
+ *   每个格子内部还要再分三小格（名称/序号/结果），table 里要么嵌套 table，
+ *   要么用 colspan 拼，两者在跨页打印时行为都不可控。grid 下每个 .spt-cell
+ *   是一个独立盒子，配合 break-inside:avoid 能保证一格不被切成两半。
+ *
+ * 12 = 4 列 × 3 小列。用 repeat(4, ...) 展开成同一套轨道，
+ * 保证四列宽度严格相等（纸质单上四列是等宽的）。
+ */
+.spt-grid4 {
+  --spt-border: #cbd5e1;
+  background: #fff;
+  /* 屏幕上给一个下限宽度，低于它三小列会挤到看不清；窄屏由外层容器横向滚动 */
+  min-width: 900px;
+}
+.spt-grid4-head,
+.spt-grid4-body {
+  display: grid;
+  /* 每列：序号(固定) | 检测项目(自适应) | 结果(固定)
+   * 顺序为序号在最左（按用户要求，与纸质样单的「名称在最左」有意不同）。
+   * 宽度：序号 2.2→2.8rem、结果 3.2→4.2rem，中间名称列相应收窄。
+   * 序号加宽是为了两位数（如「28」）不贴边；结果加宽是因为「++++」
+   * 四个加号在 3.2rem 下会被挤压甚至换行。 */
+  grid-template-columns: repeat(4, 2.8rem minmax(0, 1fr) 4.2rem);
+}
+.spt-grid4-head .spt-h {
+  background: #1e293b; color: #fff; font-weight: 600; font-size: 0.7rem;
+  text-align: center; letter-spacing: .02em; padding: .5rem .15rem;
+  border: 1px solid #1e293b; border-right-color: #475569;
+  white-space: nowrap; overflow: hidden;
+}
+.spt-grid4-head .spt-h:last-child { border-right-color: #1e293b; }
+
+/* 一个项目格：内部三小格用 subgrid 对齐到父级轨道，
+   这样四列的名称/序号/结果边线在整张表上是通齐的（纸质单就是通齐的）。
+   subgrid 不被支持时（旧内核）退化为 display:contents 也能对齐，见下方兜底。 */
+.spt-cell {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: span 3;
+  break-inside: avoid; page-break-inside: avoid;
+}
+@supports not (grid-template-columns: subgrid) {
+  /* 兜底：让三个子格直接参与父 grid 的轨道分配，效果等同 subgrid。
+     代价是 .spt-cell 自身不再是盒子，因此背景色改由子格承担（见 .is-pos 等）。 */
+  .spt-cell { display: contents; }
+}
+.spt-cell-name, .spt-cell-no, .spt-cell-res {
+  border: 1px solid var(--spt-border);
+  border-top: 0; border-left: 0;
+  min-height: 40px; display: flex; align-items: center;
+}
+/* 补回被上面统一去掉的首行上边框与首列左边框，避免整表缺边。
+ * 注意最左的小格现在是「序号」（.spt-cell-no），不再是名称格 —— 列序调整后
+ * 这条选择器必须跟着改，否则整张表最左侧会缺一条竖线。 */
+.spt-grid4-body > .spt-cell:nth-child(-n+4) > * { border-top: 1px solid var(--spt-border); }
+.spt-grid4-body > .spt-cell:nth-child(4n+1) > .spt-cell-no { border-left: 1px solid var(--spt-border); }
+
+.spt-cell-name { position: relative; padding: 0; min-width: 0; }
+.spt-cell-no {
+  justify-content: center; font-size: .72rem; font-weight: 600;
+  color: #475569; background: #f8fafc; font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.spt-cell-res {
+  position: relative; justify-content: center; cursor: pointer;
+  font-weight: 700; font-size: .875rem; color: #0f172a;
+  background: #fff; transition: background .12s;
+}
+.spt-cell-res:hover { background: #eff6ff; }
+.spt-cell-res:focus-visible { outline: 2px solid #1f6feb; outline-offset: -2px; }
+/* 空结果格给一个淡提示点，告诉操作者这里可以点 */
+.spt-cell-res:empty::after,
+.spt-cell-res .spt-res-text:empty::after { content: '·'; color: #cbd5e1; font-weight: 400; }
+.spt-res-text.pos { color: #b91c1c; }
+.spt-res-text.neg { color: #64748b; font-weight: 600; }
+/* 只读态：不给点击反馈，避免操作者以为能改 */
+.spt-cell-res.locked { cursor: default; }
+.spt-cell-res.locked:hover { background: #fff; }
+
+/* 结果底色：阳性红、阴性灰。是**临床关键信息**，打印时也必须保留（见 @media print） */
+.spt-cell.is-pos > .spt-cell-name,
+.spt-cell.is-pos > .spt-cell-no,
+.spt-cell.is-pos > .spt-cell-res { background: #fee2e2; }
+.spt-cell.is-neg > .spt-cell-name,
+.spt-cell.is-neg > .spt-cell-no,
+.spt-cell.is-neg > .spt-cell-res { background: #f1f5f9; }
+
+/* 对照格：黄底（阳性对照 组胺）/ 蓝底（阴性对照 生理盐水）。
+   它们在纸质单上是和普通项目**并排在网格里**的，不是单独两行。 */
+.spt-cell.is-ctrl > .spt-cell-name,
+.spt-cell.is-ctrl > .spt-cell-no,
+.spt-cell.is-ctrl > .spt-cell-res { background: #fef9c3; }
+/* 对照格的标签放在序号列（对照行没有序号，那格本来空着）。
+ * 不能给 .is-ctrl 单独设 grid-template-columns：.spt-cell 用的是 subgrid，
+ * 一旦覆盖轨道，这一格就脱离父级轨道，竖线会和上面各行错开。
+ * 所以保持 subgrid，只把标签缩到序号列宽度内（两行显示），
+ * 名称列因此完整保留，不再被截断成「阳性对」。 */
+/* 「阳性对照」四个字横排放不进序号列（屏幕 2.8rem / 纸上 1.9rem），
+ * 会被截成「阳性对」。改为 2×2：每行两字，宽两字、高两行。
+ * 两行由 JS 拆成两个 <i> 显式产生，不依赖自动折行（自动折行在窄列里
+ * 会退化成一字一行共四行，行高 28px 时装不下）。 */
+.spt-ctrl-label {
+  font-size: .56rem; font-weight: 700; color: #854d0e; letter-spacing: 0;
+  padding: 0; line-height: 1.05; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.spt-ctrl-label > i { font-style: normal; white-space: nowrap; }
+.spt-cell.is-ctrl > .spt-cell-no { justify-content: center; padding: 0; }
+/* 占位格：只保留边框，不要空结果格的「·」提示点（那会让人以为可以点） */
+.spt-cell.is-pad > .spt-cell-res::after,
+.spt-cell.is-pad > .spt-cell-res:empty::after { content: '' !important; }
+.spt-cell-name { display: flex; align-items: center; }
+.spt-cell-name .cell-input { flex: 1 1 auto; min-width: 0; }
+
+/* 结果弹层：+ / ++ / +++ / ++++ / 阴性 / 清除 */
+.res-btn {
+  min-width: 2.4rem; padding: .35rem .3rem; border-radius: .375rem;
+  border: 1px solid #e2e8f0; background: #fff; font-weight: 700; font-size: .8125rem;
+  color: #b91c1c; cursor: pointer; line-height: 1.2; transition: all .1s;
+}
+.res-btn:hover { background: #fef2f2; border-color: #fca5a5; }
+.res-btn.active { background: #dc2626; border-color: #dc2626; color: #fff; }
+.res-btn.neg { color: #475569; font-size: .75rem; }
+.res-btn.neg:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.res-btn.neg.active { background: #475569; border-color: #475569; color: #fff; }
+.res-btn.clr { color: #94a3b8; font-size: .75rem; font-weight: 500; }
+.res-btn.clr:hover { background: #f8fafc; }
+
+.cell-input {
+  width: 100%; height: 100%; border: 0; outline: 0; padding: 0 0.5rem;
+  font-size: 0.8125rem; background: transparent; color: #0f172a;
+}
+.cell-input:focus { background: #eff6ff; box-shadow: inset 0 0 0 2px #1f6feb; }
+.cell-input.text-center { text-align: center; }
+.cell-input::placeholder { color: #cbd5e1; }
+
+/* 自动测量来源角标。绝对定位在单元格右侧，不占布局宽度 ——
+   报告单已压到单页，任何增加列宽的做法都会挤破版式。
+   打印时由 .no-print 隐藏（纸上只需要结果，不需要来源图标）。 */
+.cell-measure { position: relative; }
+.measure-tag {
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  font-size: 9px; line-height: 1; color: #64748b;
+  background: #e2e8f0; border-radius: 3px; padding: 2px 3px;
+  cursor: help; pointer-events: auto;
+}
+.measure-tag.edited { color: #92400e; background: #fde68a; }
+/* 未实测（跳过按默认视为阴性）：用与 edited 明显不同的冷色，避免被误读为「已人工核对」 */
+.measure-tag.assumed { color: #7c3aed; background: #ede9fe; }
+/* 自动判阴（算法测过、未检出风团）：介于「已实测」与「未实测」之间的一态。
+   刻意不用 assumed 的紫色 —— 那个颜色的既有含义是「没人看过」，
+   而这里算法确实测过，混色会让两种可信度不同的情形在视觉上不可分。 */
+.measure-tag.auto-neg { color: #0f766e; background: #ccfbf1; }
+/* 4 列网格里的角标：结果格是 flex 居中，角标改用绝对定位贴右缘，不挤走结果文字 */
+.spt-cell-res .measure-tag { right: 1px; }
+
+/* ===== 卡片 ===== */
+.card { background:#fff; border:1px solid #e2e8f0; border-radius:0.75rem; }
+.card-hover { transition: all .18s; }
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -8px rgba(15,23,42,.18); border-color:#bfdbfe; }
+
+/* ===== 按钮 ===== */
+.btn { display:inline-flex; align-items:center; gap:.45rem; padding:.5rem .95rem; border-radius:.5rem;
+       font-size:.875rem; font-weight:500; transition:all .15s; cursor:pointer; white-space:nowrap; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn-primary { background:#1f6feb; color:#fff; } .btn-primary:hover:not(:disabled){ background:#1a5fd0; }
+.btn-ghost { background:#fff; color:#334155; border:1px solid #cbd5e1; } .btn-ghost:hover:not(:disabled){ background:#f8fafc; border-color:#94a3b8; }
+.btn-danger { background:#dc2626; color:#fff; } .btn-danger:hover:not(:disabled){ background:#b91c1c; }
+.btn-success { background:#059669; color:#fff; } .btn-success:hover:not(:disabled){ background:#047857; }
+.btn-sm { padding:.3rem .6rem; font-size:.8125rem; }
+.btn-xs { padding:.2rem .45rem; font-size:.75rem; }
+
+/* ===== 表单 ===== */
+.field-label { display:block; font-size:.8125rem; font-weight:500; color:#475569; margin-bottom:.3rem; }
+.field-input { width:100%; padding:.5rem .7rem; border:1px solid #cbd5e1; border-radius:.5rem; font-size:.875rem; outline:none; background:#fff; }
+.field-input:focus { border-color:#1f6feb; box-shadow:0 0 0 3px rgba(31,111,235,.12); }
+.field-input:disabled { background:#f1f5f9; color:#64748b; }
+/* ---- 患者信息区：「标签：值」左右并排 ----
+ * 只作用于 #patient-fields，不动全局 .field-label（报告签发区仍是上下式）。
+ * 标签定宽 + 右对齐冒号，四列各自的值起始位置才会齐，看起来像一张表而不是散块。
+ * 标签用 ch 单位定宽：最长的「申请时间」4 字，留一点余量即可，
+ * 用 rem 会在不同字号下与文字宽度脱节。 */
+#patient-fields > div {
+  display: flex; align-items: center; gap: .4rem;
+}
+#patient-fields > div > .field-label {
+  flex: 0 0 auto; width: 4.5em; margin-bottom: 0;
+  text-align: right; white-space: nowrap;
+}
+#patient-fields > div > .field-label::after { content: '：'; }
+/* 值区域吃掉剩余宽度；年龄那格内部还有个「岁」，用 wrap 保持同样行为 */
+#patient-fields > div > .field-input,
+#patient-fields > div > .pf-age-wrap { flex: 1 1 auto; min-width: 0; }
+/* 按钮行是操作区不是字段，恢复正常流（否则被上面的 flex 规则挤成一行） */
+#patient-fields > .pf-actions { display: flex; align-items: center; }
+
+/* OCR 未识别 → 标黄提示人工校对 */
+.field-unrecognized { background:#fef9c3 !important; border-color:#facc15 !important; }
+.field-ocr-filled { background:#ecfdf5 !important; border-color:#6ee7b7 !important; }
+
+/* ===== 徽章 ===== */
+.badge { display:inline-flex; align-items:center; gap:.25rem; padding:.15rem .5rem; border-radius:9999px; font-size:.7rem; font-weight:600; }
+.badge-draft { background:#f1f5f9; color:#475569; }
+.badge-submitted { background:#dcfce7; color:#166534; }
+.badge-archived { background:#e0e7ff; color:#3730a3; }
+.badge-deleted { background:#fee2e2; color:#991b1b; }
+.badge-online { background:#dcfce7; color:#166534; }
+.badge-offline { background:#f1f5f9; color:#64748b; }
+
+/* ===== 摄像头预览 ===== */
+.cam-stage { position:relative; background:#000; border-radius:.75rem; overflow:hidden; min-height:260px; }
+.cam-stage video { width:100%; height:auto; min-height:260px; display:block; max-height:60vh; object-fit:contain; background:#000; }
+.cam-overlay {
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; color:#e2e8f0; background:rgba(2,6,23,.72); padding:1.5rem; z-index:5;
+}
+.cam-overlay.hidden { display:none; }
+.cam-stage.mirrored video { transform: scaleX(-1); }
+.cam-guide { position:absolute; inset:8%; border:2px dashed rgba(255,255,255,.6); border-radius:.5rem; pointer-events:none; }
+.cam-guide::after {
+  content: attr(data-hint); position:absolute; left:50%; bottom:-2rem; transform:translateX(-50%);
+  color:#fff; font-size:.75rem; background:rgba(0,0,0,.55); padding:.2rem .6rem; border-radius:9999px; white-space:nowrap;
+}
+
+.thumb { position:relative; border-radius:.5rem; overflow:hidden; border:1px solid #cbd5e1; background:#f8fafc; }
+.thumb img { width:100%; height:96px; object-fit:cover; display:block; }
+.thumb-actions { position:absolute; top:.25rem; right:.25rem; display:flex; gap:.2rem; }
+
+/* ===== 可搜索分类下拉（combobox，替代原生 datalist） =====
+   固定最大高度 + 内部滚动：选项再多也不会撑破弹窗或铺满整屏 */
+.cbx-panel {
+  position: fixed; z-index: 9500; overflow-y: auto; overscroll-behavior: contain;
+  background: #fff; border: 1px solid #cbd5e1; border-radius: .5rem;
+  box-shadow: 0 12px 28px -8px rgba(15,23,42,.25), 0 4px 10px -4px rgba(15,23,42,.12);
+  padding: .25rem;
+}
+.cbx-panel::-webkit-scrollbar { width: 8px; }
+.cbx-panel::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.cbx-group + .cbx-group { border-top: 1px solid #f1f5f9; margin-top: .25rem; padding-top: .25rem; }
+.cbx-group-label {
+  position: sticky; top: -.25rem; z-index: 1;
+  background: #f8fafc; color: #64748b;
+  font-size: .6875rem; font-weight: 600; letter-spacing: .02em;
+  padding: .25rem .5rem; margin-bottom: .15rem; border-radius: .25rem;
+}
+/* 多列排布：一屏能看到更多候选，减少滚动。
+ * 用 auto-fit + max-content 而非固定 minmax：候选名称现在由临床自行维护，
+ * 可能出现较长名称（如「霉菌混合Ⅱ号」），固定列宽会把它们截断成「霉菌混…」，
+ * 用户无法确认选的是哪一项。改为按内容撑宽、放不下再换行。 */
+.cbx-items {
+  display: grid; gap: .15rem;
+  grid-template-columns: repeat(auto-fit, minmax(88px, max-content));
+}
+.cbx-item {
+  display: block; width: 100%; text-align: left;
+  padding: .3rem .5rem; border-radius: .3rem;
+  font-size: .8125rem; color: #334155; background: none; border: 0; cursor: pointer;
+  white-space: nowrap;
+}
+.cbx-item:hover, .cbx-item.cbx-active { background: #eff6ff; color: #1d4ed8; }
+
+/* ===== 模版编辑器：可增删的过敏原行 ===== */
+.tpl-row { display: flex; align-items: center; gap: .375rem; }
+.tpl-row .tpl-no {
+  width: 1.75rem; flex-shrink: 0; text-align: center;
+  font-size: .75rem; font-weight: 600; color: #64748b;
+}
+.tpl-row .tpl-del {
+  flex-shrink: 0; width: 1.75rem; height: 1.75rem; border-radius: .3rem;
+  display: grid; place-items: center; border: 0; background: none;
+  color: #cbd5e1; cursor: pointer; font-size: .8125rem;
+}
+.tpl-row:hover .tpl-del { color: #94a3b8; }
+.tpl-row .tpl-del:hover { background: #fef2f2; color: #dc2626; }
+.tpl-row .tpl-del:disabled { opacity: 0; cursor: default; }
+
+/* ===== 分段切换（页内标签 / 分类切换） ===== */
+.seg-group {
+  display: inline-flex; padding: .1875rem; gap: .1875rem;
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: .5rem;
+}
+.seg-btn {
+  display: inline-flex; align-items: center; padding: .4rem .8rem;
+  border: 0; background: none; border-radius: .375rem; cursor: pointer;
+  font-size: .8125rem; font-weight: 600; color: #64748b; white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.seg-btn:hover:not(.seg-active) { color: #334155; background: #e2e8f0; }
+.seg-btn.seg-active { background: #fff; color: #1f6feb; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
+
+/* ===== 过敏原库管理条目 ===== */
+.ac-item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .5rem .4rem .625rem; border-radius: .4rem;
+  border: 1px solid #e2e8f0; background: #fff; min-width: 0;
+}
+.ac-item:hover { border-color: #cbd5e1; background: #f8fafc; }
+.ac-item.ac-off { background: #f8fafc; border-style: dashed; }
+.ac-item.ac-off .ac-name { color: #94a3b8; text-decoration: line-through; }
+.ac-item .ac-name {
+  font-size: .8125rem; font-weight: 600; color: #1e293b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ac-item .ac-kw {
+  font-size: .6875rem; color: #94a3b8; margin-top: .0625rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 操作区：常驻但淡显，hover 时高亮（触屏也能直接点到，不做 display:none） */
+.ac-item .ac-ops { display: flex; gap: .0625rem; flex-shrink: 0; opacity: .45; transition: opacity .12s; }
+.ac-item:hover .ac-ops { opacity: 1; }
+.ac-item .ac-op {
+  width: 1.5rem; height: 1.5rem; border: 0; background: none; border-radius: .25rem;
+  display: grid; place-items: center; cursor: pointer; color: #64748b; font-size: .75rem;
+}
+.ac-item .ac-op:hover:not(:disabled) { background: #e2e8f0; color: #1e293b; }
+.ac-item .ac-op:disabled { opacity: .3; cursor: default; }
+
+/* ===== 打印视图（A4 白纸整页打印） =====
+ * 医院确认为「白纸整页打印」，不套预印表格，因此不做「每页固定 20 格」的分页，
+ * 表格按实际项目数自然延伸；但白纸打印有它自己的一组坑，下面逐条处理。 */
+@media print {
+  #sidebar, header, #toast-root, .no-print { display:none !important; }
+
+  /* 屏幕上 #app-view 用 h-screen + overflow-hidden 把布局锁成一屏（让侧栏不随
+   * 右侧内容滚动）。这套限制在纸上会把报告单**裁成一屏**，后面的项目行全部丢失，
+   * 因此打印时必须整条链路解除高度与溢出限制：app-view → main → page-body。 */
+  #app-view, #app-view > main {
+    height:auto !important; max-height:none !important;
+    min-height:0 !important; overflow:visible !important; display:block !important;
+  }
+  #page-body {
+    padding:0 !important; overflow:visible !important;
+    height:auto !important; max-height:none !important; flex:none !important;
+  }
+  body { background:#fff; }
+
+  /* ===================== 纸张尺寸（item 2b） =====================
+   *
+   * 这里只写 A4 缺省。A5 由 doPrint() 在打印前**动态注入**一条
+   * `@page{size:A5 portrait}` 覆盖（见 pages-report.js applyPageSize）。
+   *
+   * 为什么不在这里预写两套用属性选择器切：
+   *   ① @page 不参与 DOM 级联，`html[data-x] @page{}` 这种写法不存在；
+   *   ② 唯一的纯 CSS 方案是命名页（@page a5{} + html{page:a5}），
+   *      而 Firefox 至今不支持 page 属性，Chrome 也要 85+。
+   *      打印是一次性输出，打错了就是一张废纸 + 一次返工，
+   *      不值得赌浏览器特性 —— 动态注入在所有浏览器都确定生效。
+   *
+   * 保留 A4 作缺省的意义：用户直接 Ctrl+P 绕过我们的打印按钮时，
+   * 版式仍是确定的、与历史一致，而不是让 size 落到 auto 由打印机随便决定。 */
+  @page { size: A4 portrait; margin: 12mm; }
+
+  .print-only { display:block !important; }
+
+  /* 强制输出背景色：阳性行红底 / 对照行黄蓝底是**临床关键信息**，
+   * 浏览器默认不打印背景，不加这条会把阳性标记全部丢掉 */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* 但上面的 exact 会连页面底色一起印出来：body 是 bg-slate-100，
+   * app-view / main / page-body 继承下来就是整页浅蓝底，极其费墨。
+   * 必须把所有容器显式刷白，只留表格里那些有临床含义的底色。 */
+  html, body, #app-view, #app-view > main, #page-body, section, .card {
+    background:#fff !important; background-color:#fff !important;
+  }
+
+  /* 卡片在纸上不需要圆角/阴影/边框，避免每个区块都套一个灰框 */
+  .card { box-shadow:none !important; border:0 !important; border-radius:0 !important; }
+  #page-body .card { margin:0 !important; }
+  /* 区块标题栏在屏幕上是 bg-slate-50 灰条，纸上不需要 */
+  .card > div.bg-slate-50 { background:#fff !important; border-bottom:1px solid #000 !important; }
+
+  /* 屏幕上为了让三小列看得清用了 min-width:900px + 横向滚动；
+   * A4 纵向 12mm 边距下可用宽度约 186mm(≈700px)，不清掉会把第 4 列裁出纸外 */
+  #spt-table-wrap { overflow:visible !important; padding:0 !important; }
+  .spt-grid4 { min-width:0 !important; width:100% !important; }
+
+  /* 四列在 703px 纸宽下每列仅约 175px，三小列必须收窄，
+   * 否则名称列被序号/结果挤到只剩两三个字。
+   * 顺序同屏幕：序号 | 检测项目 | 结果。纸上序号最多两位数、结果最长「++++」，
+   * 各留一点余量即可，其余宽度全给名称列。 */
+  /* 轨道数按实际列数生成，不再写死 4。
+   * --spt-cols 由 renderTable 写在 .spt-grid4 上（A4=4、A5=2）。
+   * 写死 4 的后果：A5 只渲染了 2 列的格子，CSS 却仍开 12 条轨道，
+   * 后 6 条空着 —— 表格右半边整片空白，看起来就是打印坏了。 */
+  .spt-grid4-head, .spt-grid4-body {
+    grid-template-columns:repeat(var(--spt-cols, 4), 1.9rem minmax(0,1fr) 2.6rem) !important;
+  }
+  /* A5 = 2 大列。每大列 234px，序号/结果小列可以给得比 A4 宽松些，
+   * 名称列仍剩约 162px（≈13 个汉字），足够放「屋尘螨提取物」这类长名。 */
+  html[data-print-size="A5"] .spt-grid4-head,
+  html[data-print-size="A5"] .spt-grid4-body {
+    grid-template-columns:repeat(var(--spt-cols, 2), 2.1rem minmax(0,1fr) 2.8rem) !important;
+  }
+  .spt-grid4-head .spt-h {
+    background:#e2e8f0 !important; color:#000 !important;   /* 深底白字费墨，改浅底黑字 */
+    border-color:#000 !important; font-size:.6rem !important; padding:.25rem .1rem !important;
+  }
+  /* 行高：原先 min-height:0 把高度完全放开，行被压到只剩文字高度，印出来又扁又挤。
+   * 现在给一个明确下限，但**不能写死**：20 项是 6 行、30 项是 8 行，
+   * 同一个固定值必然在项目多时把末行挤出纸外（实测 46px 在 30 项时丢末项）。
+   * 所以由 JS 按实际行数算出 --spt-row-h 写在 .spt-grid4 上（见 pages-report.js
+   * applyRowHeight），这里只提供一个兜底值。 */
+  .spt-cell-name, .spt-cell-no, .spt-cell-res {
+    border-color:#000 !important;
+    min-height:var(--spt-row-h, 34px) !important;
+    font-size:.68rem !important;
+  }
+  .spt-grid4-body > .spt-cell:nth-child(-n+4) > * { border-top-color:#000 !important; }
+  .spt-grid4-body > .spt-cell:nth-child(4n+1) > .spt-cell-no { border-left-color:#000 !important; }
+  .spt-cell-res { font-size:.75rem !important; }
+  /* 空结果格的「可点击」提示点是屏幕交互线索，纸上是个多余的墨点 */
+  .spt-cell-res:empty::after, .spt-cell-res .spt-res-text:empty::after { content:'' !important; }
+  /* 序号格屏幕上是浅灰底，四列 × N 行铺满整页会明显费墨 */
+  .spt-cell-no { background:#fff !important; }
+  /* 末行右侧的占位格：屏幕上画边框是为了让网格看起来整齐，但印在化验单上，
+   * 一排带框的空格子会被当成「还有项目没填完」。纸上让它彻底空白，
+   * 只保留占位（不能 display:none —— 那会让 grid 回流，末行又变半行）。 */
+  .spt-cell.is-pad > .spt-cell-no,
+  .spt-cell.is-pad > .spt-cell-name,
+  .spt-cell.is-pad > .spt-cell-res {
+    border-color: transparent !important; background: #fff !important;
+  }
+  /* 阳性/阴性/对照底色必须留 —— 是临床关键信息，见上方 print-color-adjust */
+  .spt-cell { break-inside:avoid; page-break-inside:avoid; }
+  .ac-item { page-break-inside:avoid; break-inside:avoid; }
+
+  /* 【已知取舍】跨页不重复表头。
+   * 旧版是 <table>，靠 thead{display:table-header-group} 每页重复表头。
+   * CSS grid 没有等价机制。但改成 4 列后行数只有原来的 1/4——
+   * 默认 20 项 = 5 行，纸质单实物是 4×4=16 格，40 项也才 10 行，
+   * 正常单子根本到不了第 2 页，重复表头的价值远低于放弃 grid 的代价。
+   * 若日后确实出现常态化多页，需改回 table + 嵌套结构再解决。 */
+
+  /* 输入框在纸上要像「填好的表格」：去掉边框圆角灰底，禁用态也不要灰底耗墨 */
+  .cell-input, .field-input {
+    border:0 !important; box-shadow:none !important; background:transparent !important;
+    color:#000 !important; -webkit-appearance:none; appearance:none;
+  }
+  .field-input { border-bottom:1px solid #000 !important; border-radius:0 !important; padding:.15rem .2rem !important; }
+  .field-input:disabled { background:transparent !important; color:#000 !important; }
+  .cell-input::placeholder, .field-input::placeholder { color:transparent !important; }
+
+  /* 症状：屏幕上是 rows=2 的 textarea，内容长时打印会被截断。
+   * 注意 textarea 即使 height:auto 也不会自适应内容，必须由 JS 撑到 scrollHeight
+   * （见 pages-report.js doPrint）；这里额外给 padding-bottom，
+   * 否则最后一行文字会紧贴下边框、被边框压掉半个字。
+   * （备注 #rp-notes 已于 2026-08 移除） */
+  #rp-symptoms {
+    height:auto !important; resize:none !important; overflow:visible !important;
+    border:1px solid #000 !important; border-radius:0 !important;
+    padding:.3rem .4rem .5rem !important; line-height:1.5 !important;
+  }
+  /* 空的备注/症状框在纸上只是一个占地方的空盒子，直接整块隐藏 */
+  .print-empty { display:none !important; }
+  /* 打印时用 div 替身顶替 textarea（见 doPrint 注释）：高度由内容决定，绝不截断 */
+  .print-hide { display:none !important; }
+  .print-shadow {
+    display:block !important; white-space:pre-wrap; word-break:break-word;
+    border:1px solid #000; padding:.3rem .4rem .45rem; line-height:1.55;
+    font-size:.8125rem; color:#000; break-inside:avoid; page-break-inside:avoid;
+  }
+
+  /* 患者信息区压缩成一行式表单，别占掉半页 */
+  #patient-section { padding:0 0 .5rem 0 !important; }
+
+  /* 【关键】患者信息强制 3 列 × 3 行 + 备注整行，与纸质单头部实物一致：
+   *   行1  姓名 | 病历号 | 申请时间
+   *   行2  性别 | 科室   | 申请医生
+   *   行3  年龄 | 流水号 | 临床诊断
+   *   行4  备注（跨 3 列）
+   *
+   * 为什么必须在这里显式写 grid-template-columns，而不能依赖 HTML 里的
+   * `grid-cols-2 md:grid-cols-3`：
+   *   A4 纵向、@page margin 12mm  ->  可用宽度 210-24 = 186mm ≈ 703 CSS px
+   *   Tailwind 的 md 断点是 768px，703 < 768，
+   *   所以打印时 md:grid-cols-3 根本不生效，会退化成 grid-cols-2（两列），
+   *   头部字段错位成 2 列，与纸质单对不上。
+   *   （症状/备注的 md:grid-cols-2 同理失效，见下方 .rp-textareas）
+   *
+   * 每列约 46mm。四列下科室/诊断这类长文本靠 .pf-diag 占两格来兜。 */
+  #patient-fields {
+    display:grid !important;
+    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+    gap:.25rem .8rem !important;
+    align-items:center !important;   /* 左右式：标签与值同基线居中，不再 end 对齐 */
+  }
+  /* 「标签：值」左右并排在纸上同样生效（屏幕规则不带 !important，
+   * 会被打印区其它 !important 规则盖掉，这里显式重申一遍）。 */
+  #patient-fields > div {
+    display:flex !important; align-items:center !important; gap:.3rem !important;
+  }
+  #patient-fields > div > .field-label {
+    flex:0 0 auto !important; width:4.5em !important; text-align:right !important;
+    margin-bottom:0 !important;
+  }
+  #patient-fields > div > .field-input,
+  #patient-fields > div > .pf-age-wrap { flex:1 1 auto !important; min-width:0 !important; }
+  /* 临床诊断跨整行。
+   * HTML 上写的是 `col-span-2 md:col-span-4`，但打印可用宽度 703px < md 断点 768px，
+   * md:col-span-4 在纸上不生效，只靠 HTML 会退化成两格 → 长诊断被截断。
+   * 故这里显式指定整行（备注字段已于 2026-08 移除，诊断接管了它原来的整行位置）。 */
+  #patient-fields > .pf-diag { grid-column:1 / -1 !important; }
+
+  /* ---------- A5：患者信息压成 2 列 ----------
+   * A5 可用宽 469px。4 列时每列仅 117px，而每格是「标签：值」左右并排，
+   * 标签本身就要 4.5em（约 43px），值只剩 70px —— 姓名勉强，
+   * 「申请时间」这种 10 字符日期和科室名必然截断（有 ellipsis 也是丢信息）。
+   * 2 列时每列 234px，标签之外还有约 190px，足够放日期和科室全名。
+   * 行数从 3 行变 5 行，A5 高度实测装得下（见 applyRowHeight 的 A5 分支）。 */
+  html[data-print-size="A5"] #patient-fields {    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+    gap:.15rem .5rem !important;
+  }
+  /* 诊断在 2 列下仍跨整行（grid-column:1/-1 已是相对列数的，无需重写），
+   * 但字号要再收一档，长诊断在 A5 上才不至于挤成两行把版面顶高。 */
+  html[data-print-size="A5"] #patient-fields .field-input { font-size:.66rem !important; }
+  html[data-print-size="A5"] .field-label { font-size:.62rem !important; }
+  html[data-print-size="A5"] #patient-fields > div > .field-label { width:4.2em !important; }
+  /* 「保存患者修改」按钮行整块移出布局流。按钮自身带 no-print 已不可见，
+   * 但容器 div 仍参与 grid，会凭空多占一行高度。 */
+  #patient-fields > .pf-actions,
+  #patient-fields > div:has(> button.no-print) { display:none !important; }
+  #patient-fields .field-input {
+    font-size:.72rem !important; padding:.1rem .15rem !important;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+  /* 年龄的「岁」单位在纸上要跟着数字走，不能被 flex 拉开 */
+  #patient-fields .flex > span { font-size:.72rem !important; color:#000 !important; }
+  .field-label { font-size:.66rem !important; margin-bottom:.05rem !important; color:#000 !important; white-space:nowrap; }
+
+  /* 屏幕上的「报告签发」编辑区整块不打印：纸上对应的是 .print-foot 签名栏。
+   * 两者都印会出现两份执行/报告时间。#signoff-section 自身已带 no-print，
+   * 这里再显式兜一道，避免日后有人去掉那个类就漏印成双份。 */
+  #signoff-section { display:none !important; }
+
+  /* 症状：备注字段已于 2026-08 按使用方要求移除，这里只剩症状一项，
+   * 不再需要两列网格（原先是「症状|备注」左右并列）。
+   * 保留这条规则只为压掉屏幕上的 px-5 pb-5 内边距 —— 纸上不需要那么大留白。 */
+  .rp-textareas { padding:.3rem 0 0 0 !important; }
+
+  /* ---------- 是否打印手臂照片（item 2b） ----------
+   * JS 已给 #photo-section 加 .print-empty 来隐藏（这样 measureRowHeight
+   * 才能把腾出的高度算进可用空间，见 doPrint 注释）。这里再用属性兜一道：
+   * 万一日后有人改动 doPrint 漏掉了那一步，照片也不会意外印出来 ——
+   * 用户明确选了"不打印照片"，那就不能印，这是不该出错的一条。 */
+  html[data-print-photos="0"] #photo-section { display:none !important; }
+
+  /* 照片：屏幕 6 列 96px 高只是缩略图，纸上要看得清手臂点刺区 */
+  #photo-grid { grid-template-columns:repeat(2, 1fr) !important; gap:.5rem !important; }
+  .thumb { break-inside:avoid; page-break-inside:avoid; border-color:#000 !important; }
+  .thumb img { height:auto !important; max-height:75mm !important; object-fit:contain !important; }
+  /* 缩略图下方的设备名/「待保存」标签属于屏幕信息，纸上不需要 */
+  .thumb > p { display:none !important; }
+  /* 空状态是给操作者看的软件提示（「点击右上『拍照』使用 USB 摄像头采集」），
+   * 印在给患者的报告单上非常不专业，且会白占一整页。
+   * 注意这条同时隐藏了屏幕上的「左手臂 / 右手臂」分组标题（也是 col-span-full），
+   * 这是有意的 —— 纸上靠每张照片自己的角标标左右，见下条。 */
+  #photo-grid .col-span-full { display:none !important; }
+
+  /* 左右手臂角标：分组标题在纸上被隐藏了，所以每张照片必须自带标记，
+   * 否则打印出来的报告单上「哪张是左臂」这个判读依据就完全丢失了。
+   * 屏幕上是彩色徽章，纸上改为黑白描边：既有的打印原则是不喷彩墨
+   * （黑白激光下彩底会糊成灰块，反而看不清字）。 */
+  .thumb > .print-only {
+    display:block !important; position:absolute; top:1mm; left:1mm;
+    background:#fff !important; color:#000 !important;
+    border:.4mm solid #000; border-radius:.6mm;
+    padding:0 1mm; font-size:8pt; font-weight:700; line-height:1.5;
+  }
+
+  /* 各区块标题下不要紧跟着断页 */
+  section { break-inside:auto; }
+  h3 { break-after:avoid; }
+
+  /* 区块标题前的装饰性图标（fa-id-card / fa-table-cells / fa-hand 等）在屏幕上
+   * 是品牌蓝，配合上面的 print-color-adjust:exact 会被原样喷成彩色，
+   * 既费彩墨、黑白激光打印机上又会变成一团灰块。纸上直接不要这些装饰图标。
+   * 注意只隐藏 h3 里的，表格内如有表意图标不受影响。 */
+  h3 > i.fas, h3 > i.far, h3 > i.fa-solid { display:none !important; }
+  /* 标题本身在纸上用黑色，别用屏幕的深蓝灰 */
+  h3 { color:#000 !important; }
+
+  /* 打印页眉/页脚。页脚整块不允许被切页，签名栏和免责声明必须在一起 */
+  .print-head { display:block !important; margin-bottom:.6rem; }
+  .print-foot {
+    display:block !important; margin-top:.8rem;
+    break-inside:avoid; page-break-inside:avoid;
+  }
+
+  /* ==================== A5 整体收缩 ====================
+   * A5 可用高 703px，只有 A4（1032px）的 68%。表格行高由 JS 自适应，
+   * 但表格**以外**的区块（页眉、标题、症状、页脚）在 A4 下的留白
+   * 按比例搬到 A5 会吃掉过多高度，把表格挤到第 2 页。
+   * 这里统一压缩这些固定占用，给表格留出空间。 */
+  html[data-print-size="A5"] .print-head { margin-bottom:.3rem; }
+  html[data-print-size="A5"] .print-foot { margin-top:.4rem; }
+  html[data-print-size="A5"] #patient-section { padding:0 0 .25rem 0 !important; }
+  html[data-print-size="A5"] .rp-textareas { padding:.15rem 0 0 0 !important; }
+  html[data-print-size="A5"] h3 { font-size:.8rem !important; margin-bottom:.2rem !important; }
+  html[data-print-size="A5"] .card > div.bg-slate-50 { padding:.2rem .4rem !important; }
+  /* 表头与单元格字号：A5 列窄，字号不收会让「检测项目」表头自己就换行 */
+  html[data-print-size="A5"] .spt-grid4-head .spt-h {
+    font-size:.55rem !important; padding:.15rem .1rem !important;
+  }
+  html[data-print-size="A5"] .spt-cell-name,
+  html[data-print-size="A5"] .spt-cell-no { font-size:.64rem !important; }
+  html[data-print-size="A5"] .spt-cell-res { font-size:.7rem !important; }
+  html[data-print-size="A5"] .print-shadow { font-size:.7rem; padding:.2rem .3rem .3rem; }
+
+  /* ==================== 长春儿童医院模板（CCCH） ==================== */
+  html[data-print-template="CCCH"] {
+    font-family: "SimSun", "Songti SC", "Noto Serif SC", "Microsoft YaHei", serif;
+    color:#000 !important;
+  }
+  /* CCCH 模板的头部已包含患者信息，隐藏默认患者信息区避免重复。 */
+  html[data-print-template="CCCH"] #patient-section,
+  html[data-print-template="CCCH"] .rp-textareas {
+    display:none !important;
+  }
+  html[data-print-template="CCCH"] .card > div.bg-slate-50 { display:none !important; }
+  html[data-print-template="CCCH"] .print-head { margin-bottom:.35rem !important; }
+  html[data-print-template="CCCH"] .print-foot { margin-top:.35rem !important; }
+
+  html[data-print-template="CCCH"] .ccch-head {
+    border-top:1px solid #000;
+    border-bottom:1px solid #000;
+    padding:.15rem 0 .25rem;
+  }
+  html[data-print-template="CCCH"] .ccch-head-top {
+    display:grid;
+    grid-template-columns:1.2fr .5fr 2fr 2.3fr;
+    align-items:center;
+    column-gap:.35rem;
+    padding-bottom:.18rem;
+    border-bottom:1px solid #000;
+    font-size:.9rem;
+  }
+  html[data-print-template="CCCH"] .ccch-outpatient { font-size:1.05rem; font-weight:700; }
+  html[data-print-template="CCCH"] .ccch-brand {
+    justify-self:center;
+    font-size:1.35rem;
+    line-height:1;
+    font-weight:700;
+  }
+  html[data-print-template="CCCH"] .ccch-hospital {
+    text-align:center;
+    font-size:.85rem;
+    line-height:1.2;
+    letter-spacing:.01em;
+    font-weight:600;
+  }
+  html[data-print-template="CCCH"] .ccch-report-title {
+    text-align:right;
+    font-size:.98rem;
+    line-height:1.2;
+    letter-spacing:.02em;
+    font-weight:700;
+  }
+  html[data-print-template="CCCH"] .ccch-patient-meta {
+    margin-top:.18rem;
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:.14rem .5rem;
+    font-size:.74rem;
+    line-height:1.35;
+  }
+  html[data-print-template="CCCH"] .ccch-patient-meta > div {
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  html[data-print-template="CCCH"] .ccch-patient-meta .ccch-diag {
+    grid-column:1 / -1;
+    white-space:normal;
+  }
+
+  html[data-print-template="CCCH"] .spt-grid4-head .spt-h {
+    background:#fff !important;
+    color:#000 !important;
+    border-color:#000 !important;
+    font-size:.62rem !important;
+    padding:.1rem .06rem !important;
+    font-weight:700 !important;
+  }
+  html[data-print-template="CCCH"] .spt-cell-name,
+  html[data-print-template="CCCH"] .spt-cell-no,
+  html[data-print-template="CCCH"] .spt-cell-res {
+    min-height:var(--spt-row-h, 28px) !important;
+    font-size:.72rem !important;
+    border-color:#000 !important;
+  }
+  html[data-print-template="CCCH"] .spt-cell-no { font-weight:600; }
+  html[data-print-template="CCCH"] .spt-cell-res { font-size:.74rem !important; }
+
+  html[data-print-template="CCCH"] .ccch-foot-line {
+    border-top:1px solid #000;
+    margin-top:.1rem;
+    padding-top:.2rem;
+  }
+  html[data-print-template="CCCH"] .ccch-foot-row {
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    column-gap:.55rem;
+    font-size:.76rem;
+    line-height:1.3;
+    white-space:nowrap;
+  }
+
+  /* ==================== 长春儿童医院定制模板（CCCH_V2，纸单1:1） ==================== */
+  html[data-print-template="CCCH_V2"] {
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+    color:#000 !important;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html[data-print-template="CCCH_V2"] #patient-section,
+  html[data-print-template="CCCH_V2"] .rp-textareas {
+    display:none !important;
+  }
+  /* 2026-09 #photo-section 不再无条件隐藏：用户选"打印照片"时应显示。
+   * 不打印照片时由通用规则 [data-print-photos="0"] #photo-section 隐藏。 */
+  html[data-print-template="CCCH_V2"] #photo-section {
+    border:0 !important;
+    box-shadow:none !important;
+    padding:.3rem 0 0 !important;
+    margin-top:.2rem;
+  }
+  html[data-print-template="CCCH_V2"] #photo-section h3 {
+    font-size:.86rem;
+    color:#000;
+    margin-bottom:.3rem;
+  }
+  html[data-print-template="CCCH_V2"] .card > div.bg-slate-50 { display:none !important; }
+  html[data-print-template="CCCH_V2"] .print-head { margin-top:0 !important; margin-bottom:.56rem !important; }  /* 2026-09 原-.32rem负边距把表头顶出页面，医院名首行被裁 */
+  html[data-print-template="CCCH_V2"] .print-foot { margin-top:.52rem !important; }
+
+  html[data-print-template="CCCH_V2"] .ccch2-head {
+    border-top:0;
+    border-bottom:0;
+    padding:.08rem 0 .34rem;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-topline {
+    display:grid;
+    grid-template-columns:.78fr .3fr 1.45fr 1.95fr;
+    align-items:center;
+    column-gap:.24rem;
+    border-bottom:1px solid #000;
+    padding-bottom:.34rem;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-outpatient { font-size:1rem; font-weight:700; }
+  html[data-print-template="CCCH_V2"] .ccch2-brand {
+    justify-self:center;
+    font-size:1.02rem;
+    line-height:1;
+    font-weight:700;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-hospital {
+    text-align:center;
+    font-size:.92rem;
+    line-height:1.34;
+    font-weight:700;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-title {
+    text-align:right;
+    font-size:1.12rem;
+    line-height:1.34;
+    letter-spacing:.01em;
+    font-weight:700;
+  }
+
+  html[data-print-template="CCCH_V2"] .ccch2-meta {
+    margin-top:.34rem;
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:.28rem .55rem;
+    font-size:.8rem;
+    line-height:1.62;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-meta > div {
+    white-space:nowrap;
+    overflow:visible;
+    text-overflow:clip;
+    padding-right:.08rem;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-meta .ccch2-remark {
+    grid-column:4;
+    grid-row:1 / span 3;
+    align-self:start;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-meta .ccch2-diag {
+    grid-column:3;
+    white-space:nowrap;
+  }
+
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-head { display:none !important; }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-body {
+    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+    justify-content:stretch;
+    column-gap:0;
+    border-top:1px solid #000;
+    border-bottom:1px solid #000;
+    padding:.1rem 0;
+    row-gap:.44rem;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-name,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-no,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
+    border:0 !important;
+    min-height:1.62rem !important;
+    background:#fff !important;
+    font-size:.86rem !important;
+    padding:0 !important;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell {
+    grid-column:span 1 !important;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:20px;   /* 名称与结果的最小间隔；结果已右对齐（.spt-cell-res margin-left:auto） */
+    white-space:nowrap;
+    padding-right:40px;
+    min-width:0;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-body > .spt-cell:nth-child(4n) {
+    padding-right:0;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-name { order:1; }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-no {
+    display:none !important;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
+    order:2;
+    justify-content:flex-end;
+    margin-left:auto;   /* 2026-09 结果右对齐：推到单元格右缘，各列结果右边对齐 */
+    padding-left:0 !important;
+    width:auto !important;
+    min-width:0 !important;
+    font-weight:400 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .cell-input {
+    width:auto !important;
+    flex:0 0 auto !important;
+    padding:0 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
+    letter-spacing:0;
+  }
+  /* CCCH_V2 打印时名称是 <span class="spt-name-print">（见 pages-report.js
+   * cellHtml 的 ccch2 分支）：<input> 收不回内容宽（回落到浏览器默认 ~170px），
+   * 名称与结果之间被撑出一大段空白。span 天然内容宽，
+   * 名称与结果的实际间隔就是上面 .spt-cell 的 gap（10px），不再虚胖。 */
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-name-print {
+    font-size:.9rem;
+    line-height:1.42;
+    white-space:nowrap;
+    color:#000;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-no,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-name,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-res,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-pos > .spt-cell-no,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-pos > .spt-cell-name,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-pos > .spt-cell-res,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-neg > .spt-cell-no,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-neg > .spt-cell-name,
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-neg > .spt-cell-res {
+    background:#fff !important;
+  }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-pad { visibility:hidden; }
+
+  html[data-print-template="CCCH_V2"] .ccch2-foot-line {
+    border-top:0;
+    margin-top:.28rem;
+    padding-top:.24rem;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-foot-row {
+    display:grid;
+    grid-template-columns:1.35fr 1.35fr 1.1fr 1.15fr;
+    column-gap:.52rem;
+    font-size:.8rem;
+    line-height:1.34;
+    white-space:nowrap;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-foot-sig {
+    display:flex;
+    align-items:flex-end;
+    gap:.1rem;
+  }
+  html[data-print-template="CCCH_V2"] .ccch2-foot-sig u {
+    display:inline-block;
+    min-width:2.9cm;
+    border-bottom:1px solid #000;
+    line-height:1;
+    text-decoration:none;
+  }
+
+  /* ============ 自定义版式（CUSTOM，管理后台「报告单版式」配置） ============
+   * 头/尾由 print-render.js（window.PrintRender）渲染成 .cpt-* 结构，
+   * .cpt-* 的视觉样式定义在文件末尾的全局段（预览与打印共用同一套）。
+   * 这里只做打印页面级的开关：隐藏屏幕版信息区、收紧上下留白、
+   * 以及表格 .spt-grid-cpt 的打印形态（复用 CCCH_V2 的无边框紧凑风格，
+   * 列数/间隔来自 renderTable 写进行内样式的 --spt-cols / --cpt-gap）。 */
+  html[data-print-template="CUSTOM"] {
+    font-size: 13px;
+  }
+  html[data-print-template="CUSTOM"] #patient-section,
+  html[data-print-template="CUSTOM"] .rp-textareas {
+    display:none !important;
+  }
+  html[data-print-template="CUSTOM"] .card > div.bg-slate-50 { display:none !important; }
+  html[data-print-template="CUSTOM"] .print-head { margin-top:0 !important; margin-bottom:.56rem !important; }
+  html[data-print-template="CUSTOM"] .print-foot { margin-top:.52rem !important; }
+  /* 照片区：与 CCCH_V2 同款紧凑处理（无边框、小标题）。
+   * 是否打印照片由 doPrint 的 emptied 路径决定，这里只管样子。 */
+  html[data-print-template="CUSTOM"] #photo-section {
+    border:0 !important; box-shadow:none !important; padding:0 !important;
+    margin-top:.4rem !important;
+  }
+  html[data-print-template="CUSTOM"] #photo-section h3 {
+    font-size:.78rem !important; margin-bottom:.25rem !important;
+  }
+
+  /* ---- 表格：.spt-grid-cpt（renderTable 的自定义打印形态） ---- */
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-head { display:none !important; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-body {
+    grid-template-columns:repeat(var(--spt-cols, 4), minmax(0, 1fr)) !important;
+    justify-content:stretch;
+    column-gap:0;
+    border-top:1px solid #000;
+    border-bottom:1px solid #000;
+    padding:.1rem 0;
+    row-gap:.44rem;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    border:0 !important;
+    /* 行高吃 JS 算出的 --spt-row-h（见 applyRowHeight 的 CUSTOM 分支）：
+     * 之前写死 1.62rem，行高变量进不来，项目少时内容全挤在纸张上部、
+     * 下方大片空白 —— 正是用户报的「样式有问题」。1.62rem 只作兜底。 */
+    min-height:var(--spt-row-h, 1.62rem) !important;
+    background:#fff !important;
+    font-size:.86rem !important;
+    padding:0 !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell {
+    grid-column:span 1 !important;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:var(--cpt-gap, 20px);
+    white-space:nowrap;
+    padding-right:32px;
+    min-width:0;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no {
+    order:0;
+    font-weight:600;
+    font-size:.78rem !important;
+    color:#000;
+    flex:0 0 auto;
+    width:auto !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name { order:1; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    order:2;
+    justify-content:flex-end;
+    margin-left:auto;   /* 结果右对齐（result_align=right，默认） */
+    padding-left:0 !important;
+    width:auto !important;
+    min-width:0 !important;
+    font-weight:400 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
+  }
+  /* result_align=left：结果紧跟名称，间隔就是 --cpt-gap */
+  html[data-print-template="CUSTOM"] .spt-grid-cpt.cpt-align-left .spt-cell-res {
+    margin-left:0;
+    justify-content:flex-start;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-name-print {
+    font-size:.9rem;
+    line-height:1.42;
+    white-space:nowrap;
+    color:#000;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-ctrl > *,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-pos > *,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-neg > * {
+    background:#fff !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-pad { visibility:hidden; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-ctrl-label {
+    display:inline; font-size:.78rem; font-weight:600;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-ctrl-label i {
+    display:inline; font-style:normal;
+  }
+
+  /* ---- CUSTOM × A5 横向：整体收紧一档 ----
+   * A5 横向可用高仅约 469px（A4 纵向 1032px 的 45%），
+   * 头部字号/边距按 A4 的规格排会占掉近一半纸高。
+   * 宽度与 A4 纵向相同（都是 210mm-24mm），所以只压纵向，不动列数。 */
+  html[data-print-size="A5"][data-print-template="CUSTOM"] { font-size:12px; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .print-head { margin-bottom:.3rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .print-foot { margin-top:.3rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-head { padding-bottom:4px; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-stacked .cpt-hosp,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-inline .cpt-hosp {
+    font-size:1.02rem; line-height:1.25;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-stacked .cpt-title,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-inline .cpt-title {
+    font-size:.92rem; margin-top:2px;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-meta {
+    font-size:.7rem; row-gap:2px; margin-top:4px;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-body {
+    row-gap:.26rem;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    font-size:.78rem !important;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-name-print { font-size:.8rem; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res { font-size:.82rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-foot-row { font-size:.7rem; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-foot-note { font-size:.62rem; margin-top:4px; }
+
+}
+.print-only, .print-head, .print-foot { display:none; }
+
+
+/* =============================================================================
+ * .cpt-* —— 自定义报告单版式（print-render.js 输出的结构）
+ * -----------------------------------------------------------------------------
+ * 两个消费场景共用这一套样式，保证「预览什么样、打出来就什么样」：
+ *   ① 管理后台「报告单版式」页 #pt-preview 里的实时预览（屏幕媒体）；
+ *   ② 报告单打印（.print-head/.print-foot 内，打印媒体）。
+ * 所以这里刻意不写进 @media print，也不用屏幕特有的交互样式。
+ * ========================================================================== */
+.cpt-page {
+  background:#fff; color:#000; padding:24px 28px;
+  font-family:inherit; line-height:1.45;
+  border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,.08);
+}
+/* 预览容器里模拟纸张比例；打印时用不到 .cpt-page（头尾直接渲进 print-head/foot） */
+.cpt-a4 { width:100%; max-width:760px; min-height:640px; margin:0 auto; }
+.cpt-a5 { width:100%; max-width:760px; min-height:420px; margin:0 auto; }
+
+.cpt-head { border-bottom:2px solid #000; padding-bottom:6px; }
+
+/* 一行式表头（长春儿医风格）：左标 | ✚/logo | 医院名 | 标题 */
+.cpt-topline.cpt-inline {
+  display:grid;
+  grid-template-columns:auto auto 1fr auto;
+  align-items:center;
+  column-gap:10px;
+}
+.cpt-topline.cpt-inline .cpt-left { font-size:1rem; font-weight:700; white-space:nowrap; }
+.cpt-topline.cpt-inline .cpt-brand {
+  font-size:1.5rem; font-weight:700; line-height:1;
+  display:flex; align-items:center;
+}
+.cpt-topline.cpt-inline .cpt-hosp {
+  font-size:.98rem; font-weight:700; line-height:1.28; letter-spacing:.04em;
+}
+.cpt-topline.cpt-inline .cpt-title {
+  font-size:1.05rem; font-weight:700; white-space:nowrap; justify-self:end;
+}
+
+/* 居中式表头（通用）：logo+医院名一行，标题独立一行 */
+.cpt-topline.cpt-stacked { text-align:center; }
+.cpt-topline.cpt-stacked .cpt-hosp-row {
+  display:flex; align-items:center; justify-content:center; gap:10px;
+}
+.cpt-topline.cpt-stacked .cpt-hosp {
+  font-size:1.02rem; font-weight:600; letter-spacing:.08em; line-height:1.3;
+}
+.cpt-topline.cpt-stacked .cpt-title {
+  font-size:1.22rem; font-weight:700; letter-spacing:.12em; margin-top:3px;
+}
+
+/* 患者信息区：列数由 print-render.js 写进行内样式 grid-template-columns */
+.cpt-meta {
+  display:grid;
+  gap:3px 12px;
+  font-size:.8rem;
+  line-height:1.5;
+  margin-top:6px;
+  padding-top:4px;
+}
+.cpt-meta > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.cpt-meta > div > span { color:#000; }
+/* 自定义条目「固定内容留空」时的手填横线（患者信息区用；页脚已有 sig 内联横线） */
+.cpt-blank {
+  display:inline-block; min-width:64px; height:1em;
+  border-bottom:1px solid #000; vertical-align:bottom;
+}
+
+/* 预览用示例表格（打印端的真实表格走 .spt-grid-cpt，见 @media print 段） */
+.cpt-grid {
+  display:grid;
+  border-top:1px solid #000;
+  border-bottom:1px solid #000;
+  padding:4px 0;
+  row-gap:7px;
+  margin-top:8px;
+  font-size:.86rem;
+}
+.cpt-grid .cpt-cell {
+  display:flex; align-items:center; white-space:nowrap;
+  padding-right:24px; min-width:0; min-height:1.6rem;
+}
+.cpt-grid .cpt-no { font-weight:600; font-size:.78rem; margin-right:6px; flex:0 0 auto; }
+.cpt-grid .cpt-name { overflow:hidden; text-overflow:ellipsis; }
+.cpt-grid .cpt-res { font-weight:400; }
+
+/* 页脚 */
+.cpt-foot { margin-top:8px; }
+.cpt-foot-row {
+  display:grid;
+  gap:4px 10px;
+  font-size:.8rem;
+  line-height:1.4;
+  white-space:nowrap;
+}
+.cpt-foot-row > div { display:flex; align-items:flex-end; gap:2px; min-width:0; }
+.cpt-foot-note { font-size:.68rem; color:#333; margin-top:6px; }
