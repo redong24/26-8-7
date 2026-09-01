@@ -822,8 +822,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
 
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-head { display:none !important; }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-body {
-    grid-template-columns:repeat(4, max-content 1.45rem) !important;
-    justify-content:space-between;
+    grid-template-columns:repeat(4, max-content) !important;
+    justify-content:flex-start;
+    column-gap:40px;
     border-top:1px solid #000;
     border-bottom:1px solid #000;
     padding:.1rem 0;
@@ -838,7 +839,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     font-size:.86rem !important;
     padding:0 !important;
   }
-  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell { grid-column: span 2 !important; }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell {
+    grid-column:span 1 !important;
+    display:flex;
+    align-items:center;
+    gap:20px;
+    white-space:nowrap;
+  }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-name { order:1; }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-no {
     display:none !important;
@@ -846,13 +853,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
     order:2;
     justify-content:flex-start;
-    padding-left:.28rem !important;
+    padding-left:0 !important;
+    width:auto !important;
+    min-width:0 !important;
     font-weight:400 !important;
     font-size:.9rem !important;
     line-height:1.42 !important;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .cell-input {
-    padding:0 .16rem 0 0 !important;
+    width:auto !important;
+    flex:0 0 auto !important;
+    padding:0 !important;
     font-size:.9rem !important;
     line-height:1.42 !important;
     letter-spacing:0;
