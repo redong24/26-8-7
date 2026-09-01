@@ -757,13 +757,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     display:none !important;
   }
   html[data-print-template="CCCH_V2"] .card > div.bg-slate-50 { display:none !important; }
-  html[data-print-template="CCCH_V2"] .print-head { margin-bottom:.44rem !important; }
+  html[data-print-template="CCCH_V2"] .print-head { margin-top:-.32rem !important; margin-bottom:.56rem !important; }
   html[data-print-template="CCCH_V2"] .print-foot { margin-top:.52rem !important; }
 
   html[data-print-template="CCCH_V2"] .ccch2-head {
-    border-top:1px solid #000;
+    border-top:0;
     border-bottom:0;
-    padding:.2rem 0 .28rem;
+    padding:.08rem 0 .34rem;
   }
   html[data-print-template="CCCH_V2"] .ccch2-topline {
     display:grid;
@@ -771,7 +771,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     align-items:center;
     column-gap:.24rem;
     border-bottom:1px solid #000;
-    padding-bottom:.24rem;
+    padding-bottom:.34rem;
   }
   html[data-print-template="CCCH_V2"] .ccch2-outpatient { font-size:1rem; font-weight:700; }
   html[data-print-template="CCCH_V2"] .ccch2-brand {
@@ -795,12 +795,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
   }
 
   html[data-print-template="CCCH_V2"] .ccch2-meta {
-    margin-top:.22rem;
+    margin-top:.34rem;
     display:grid;
     grid-template-columns:repeat(4, minmax(0, 1fr));
-    gap:.2rem .55rem;
+    gap:.28rem .55rem;
     font-size:.8rem;
-    line-height:1.46;
+    line-height:1.62;
   }
   html[data-print-template="CCCH_V2"] .ccch2-meta > div {
     white-space:nowrap;
