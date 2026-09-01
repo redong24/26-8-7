@@ -154,7 +154,12 @@ window.PageReport = (() => {
 
   function savePrintPref(pref) {
     const eff = effectivePrint(pref || {})
-    const out = { size: eff.size, photos: eff.photos, template: eff.template, custom_id: eff.custom_id || null }
+    /* photos 存用户的**原始**选择而不是 eff 的强制结果：
+     * A5 时 eff.photos 恒为 false，若把 false 存回去，用户切回 A4 后
+     * 之前勾的「打印照片」就丢了；反之旧代码存 A4 强制的 true，
+     * 「不打印」选择被覆盖。约束只在使用时（effectivePrint/resolvePrintPlan）
+     * 落地，偏好本身保持用户意图。 */
+    const out = { size: eff.size, photos: pref?.photos !== false, template: eff.template, custom_id: eff.custom_id || null }
     try { localStorage.setItem(PRINT_PREF_KEY, JSON.stringify(out)) } catch { /* 存不了就算了，不影响打印 */ }
   }
 
@@ -170,7 +175,12 @@ window.PageReport = (() => {
     const size = pref?.size === PRINT_SIZES.A5 ? PRINT_SIZES.A5 : PRINT_SIZES.A4
     return {
       size,
-      photos: size === PRINT_SIZES.A4,
+      /* 用户的「不打印照片」选择必须尊重：此前写成 photos: size===A4，
+       * 只要纸是 A4 就强制打照片，用户手选的「不打印」被直接丢掉，
+       * 存偏好时又把强制值写回本机 —— 换个尺寸/模板回来，照片选项
+       * 自己跳回「打印」（用户报的 bug）。规则只有一条方向：
+       * A5 禁止照片；A4 听用户的。 */
+      photos: pref?.photos !== false && size === PRINT_SIZES.A4,
       template: normalizePrintTemplate(pref?.template),
       custom_id: (typeof pref?.custom_id === 'string' && pref.custom_id) || null,
       forcedA4: false
@@ -1418,8 +1428,24 @@ window.PageReport = (() => {
       draft.custom_id = null
     }
     const paint = () => {
+      /* 本次打印实际会用的纸张：自定义版式由配置决定，其余用本机选择。
+       * 先算出来，照片按钮和尺寸按钮都要按它联动。 */
+      const cSel0 = draft.template === PRINT_TEMPLATES.CUSTOM ? customTplById(draft.custom_id) : null
+      const effSize = cSel0 ? cSel0.config.paper.size : draft.size
       wrap.querySelectorAll('[data-ph]').forEach(b => {
-        const on = (b.dataset.ph === '1') === (draft.photos === true)
+        /* 与长春儿医模板的 A5 同一条规则：A5 必不打照片。
+         * 实际纸张是 A5 时，「打印照片」置灰、「不打印照片」高亮 ——
+         * 界面显示与真实输出一致（此前自定义 A5 模板下照片按钮仍亮着
+         * 「打印照片」，看起来像 A5 也会打照片，用户报的 bug）。 */
+        const isOn = b.dataset.ph === '1'
+        if (effSize === PRINT_SIZES.A5) {
+          b.disabled = isOn
+          b.className = 'btn btn-sm flex-1 ' + (isOn
+            ? 'btn-ghost opacity-40 cursor-not-allowed' : 'btn-primary')
+          return
+        }
+        b.disabled = false
+        const on = isOn === (draft.photos === true)
         b.className = 'btn btn-sm flex-1 ' + (on ? 'btn-primary' : 'btn-ghost')
       })
       /* 打印照片时 A5 不可选：按钮置灰 + 明说原因。
@@ -1463,7 +1489,11 @@ window.PageReport = (() => {
         }
       }
       const note = wrap.querySelector('#pp-note')
-      if (draft.photos) {
+      if (effSize === PRINT_SIZES.A5) {
+        note.className = 'mt-2 text-xs leading-relaxed text-slate-500'
+        note.textContent = 'A5 版式不打印手臂照片（版面装不下）。'
+          + '打印时请在浏览器打印窗口「更多设置 → 纸张尺寸」中选择 A5。'
+      } else if (draft.photos) {
         note.className = 'mt-2 text-xs leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5'
         note.innerHTML = '打印照片时固定 <b>A4</b>：A5 纸装不下表格再加照片，会溢出到第 2 页。'
       } else {
