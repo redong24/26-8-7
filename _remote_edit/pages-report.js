@@ -578,9 +578,12 @@ window.PageReport = (() => {
      * 序号提到最左，是为了让护士按点刺板号顺读顺填，别照着纸质单改回去。 */
     const shownRes = (ccch2 && forPrint && !res.text) ? '—' : res.text
     const noCell = `<div class="spt-cell-no">${ctrl ? (dupLabel ? '' : ctrlLabelHtml(label)) : noText}</div>`
+    const printName = (ccch2 && forPrint && ctrl && label)
+      ? `${r.allergen_name || ''}${(r.allergen_name || '').trim() ? '（' + label + '）' : label}`
+      : r.allergen_name
     const nameCell = `<div class="spt-cell-name">
         <input class="cell-input spt-name-input" data-f="allergen_name" data-p="${r.position_no}"
-               value="${UI.esc(r.allergen_name)}"
+               value="${UI.esc(printName)}"
                placeholder="${ctrl ? (r.control_type === 'POSITIVE_CTRL' ? '组胺' : '生理盐水') : '过敏原名称'}">
       </div>`
     const resCell = `<div class="spt-cell-res" data-res="${r.position_no}" tabindex="0"
@@ -589,7 +592,7 @@ window.PageReport = (() => {
       </div>`
     return `<div class="spt-cell ${ctrl ? 'is-ctrl' : ''} ${res.kind === 'pos' ? 'is-pos' : res.kind === 'neg' ? 'is-neg' : ''}"
                  data-row="${r.position_no}">
-      ${ccch2 && forPrint ? `${nameCell}${noCell}${resCell}` : `${noCell}${nameCell}${resCell}`}
+      ${ccch2 && forPrint ? `${nameCell}${resCell}` : `${noCell}${nameCell}${resCell}`}
     </div>`
   }
 

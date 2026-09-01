@@ -822,11 +822,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
 
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-head { display:none !important; }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-grid4-body {
-    grid-template-columns:repeat(4, 2.45rem minmax(0, 1fr) 2.7rem) !important;
+    grid-template-columns:repeat(4, minmax(0, 1fr) 2.9rem) !important;
     border-top:1px solid #000;
     border-bottom:1px solid #000;
-    padding:.06rem 0;
-    row-gap:.36rem;
+    padding:.1rem 0;
+    row-gap:.44rem;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-name,
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-no,
@@ -837,26 +837,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     font-size:.86rem !important;
     padding:0 !important;
   }
+  html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell { grid-column: span 2 !important; }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-name { order:1; }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-no {
-    order:2;
-    justify-content:center;
-    font-size:.8rem !important;
-    color:#000 !important;
-    font-weight:400 !important;
+    display:none !important;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell-res {
-    order:3;
+    order:2;
     justify-content:flex-start;
-    padding-left:.36rem !important;
+    padding-left:.56rem !important;
     font-weight:400 !important;
-    font-size:.88rem !important;
-    line-height:1.38 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .cell-input {
-    padding:0 .08rem 0 0 !important;
-    font-size:.88rem !important;
-    line-height:1.4 !important;
+    padding:0 .16rem 0 0 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
     letter-spacing:0;
   }
   html[data-print-template="CCCH_V2"] .spt-grid-ccch2 .spt-cell.is-ctrl > .spt-cell-no,
