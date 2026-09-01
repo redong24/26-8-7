@@ -51,11 +51,14 @@ window.PageReport = (() => {
    * 存进 DB 会让同一张单子在不同诊室打出不同版式，反而更难排查。
    */
   const PRINT_SIZES = { A4: 'A4', A5: 'A5' }
-  const PRINT_TEMPLATES = { STANDARD: 'STANDARD', CCCH: 'CCCH', CCCH_V2: 'CCCH_V2' }
+  const PRINT_TEMPLATES = { STANDARD: 'STANDARD', CCCH: 'CCCH', CCCH_V2: 'CCCH_V2', CUSTOM: 'CUSTOM' }
   const PRINT_PREF_KEY = 'spt.print.pref.v1'
 
   function normalizePrintTemplate(v) {
     if (v === PRINT_TEMPLATES.CCCH_V2) return PRINT_TEMPLATES.CCCH_V2
+    /* CUSTOM = 管理后台配置的自定义版式（print_template 表），具体是哪一张
+     * 由偏好里的 custom_id 指定；id 失效时的回落在使用点做（见 doPrint）。 */
+    if (v === PRINT_TEMPLATES.CUSTOM) return PRINT_TEMPLATES.CUSTOM
     /* 2026-09 旧模板下线：历史偏好里存的 CCCH 自动迁移到定制模板，
      * 渲染分支与样式暂保留以兼容存量数据。 */
     if (v === PRINT_TEMPLATES.CCCH) return PRINT_TEMPLATES.CCCH_V2
@@ -70,8 +73,52 @@ window.PageReport = (() => {
     return h.includes('长春') && h.includes('儿童')
   }
 
-  function printTemplateLabel(v) {
+  /* ---- 自定义版式（管理后台「报告单版式」页配置，print_template 表） ----
+   * 打印是同步流程（doPrint → renderPrintParts → window.print），
+   * 打印瞬间来不及发请求，所以配置清单和 logo 都在进页面时预载进内存。 */
+  const customTpl = { loaded: false, list: [], hospital: { name: '', logo_url: null }, logo_src: '' }
+
+  async function ensureCustomTemplates(force) {
+    if (customTpl.loaded && !force) return customTpl
+    try {
+      const r = await API.get('/api/reports/meta/print-templates')
+      customTpl.list = (r.data || []).map(t => {
+        let cfg
+        /* 配置坏了（手改 DB / 旧版本残留）也不能拖垮整个清单：
+         * 坏的那张按默认配置渲染，其余照常可选。 */
+        try { cfg = PrintRender.normalizeConfig(JSON.parse(t.config_json || '{}')) }
+        catch { cfg = PrintRender.normalizeConfig({}) }
+        return { id: t.id, name: t.name, is_default: !!t.is_default, config: cfg }
+      })
+      customTpl.hospital = r.hospital || { name: '', logo_url: null }
+      customTpl.loaded = true
+      /* 医院配了默认版式、且这台电脑还没存过任何打印偏好时，自动采用默认版式。
+       * 只在「零偏好」时做：护士一旦自己选过模板，本机偏好优先。 */
+      try {
+        if (!localStorage.getItem(PRINT_PREF_KEY)) {
+          const dft = customTpl.list.find(t => t.is_default)
+          if (dft) savePrintPref({ size: PRINT_SIZES.A4, photos: true, template: PRINT_TEMPLATES.CUSTOM, custom_id: dft.id })
+        }
+      } catch { /* 隐私模式存不了，忽略 */ }
+      /* logo 预取成 blob URL：renderPrintParts 是同步函数，不能现场去拉图。
+       * 只有存在「要显示 logo」的版式时才取，省一次请求。 */
+      const needLogo = customTpl.hospital.logo_url
+        && customTpl.list.some(t => t.config && t.config.header.show_logo)
+      if (needLogo && !customTpl.logo_src) {
+        customTpl.logo_src = await API.imageUrl('/api/files/' + customTpl.hospital.logo_url)
+      }
+    } catch { /* 拉不到就当没有自定义版式，标准/长春儿医模板不受影响 */ }
+    return customTpl
+  }
+
+  const customTplById = (id) => (id && customTpl.list.find(t => t.id === id)) || null
+
+  function printTemplateLabel(v, customId) {
     const t = normalizePrintTemplate(v)
+    if (t === PRINT_TEMPLATES.CUSTOM) {
+      const c = customTplById(customId)
+      return c ? c.name : '自定义版式'
+    }
     if (t === PRINT_TEMPLATES.CCCH_V2) return '长春儿医定制模板'
     return '标准模板'
   }
@@ -85,7 +132,7 @@ window.PageReport = (() => {
 
   /** 读打印偏好。localStorage 不可用（隐私模式/被禁）时回落默认值，不抛异常 */
   function loadPrintPref() {
-    const def = { size: PRINT_SIZES.A4, photos: true, template: PRINT_TEMPLATES.STANDARD }
+    const def = { size: PRINT_SIZES.A4, photos: true, template: PRINT_TEMPLATES.STANDARD, custom_id: null }
     try {
       const raw = localStorage.getItem(PRINT_PREF_KEY)
       if (!raw) return def
@@ -99,14 +146,15 @@ window.PageReport = (() => {
            * 本机 localStorage 里可能还留着长春儿医的模板偏好，必须回落。 */
           return (t === PRINT_TEMPLATES.CCCH_V2 && !canUseCCCHTemplate())
             ? PRINT_TEMPLATES.STANDARD : t
-        })()
+        })(),
+        custom_id: typeof p.custom_id === 'string' ? p.custom_id : null
       }
     } catch { return def }
   }
 
   function savePrintPref(pref) {
     const eff = effectivePrint(pref || {})
-    const out = { size: eff.size, photos: eff.photos, template: eff.template }
+    const out = { size: eff.size, photos: eff.photos, template: eff.template, custom_id: eff.custom_id || null }
     try { localStorage.setItem(PRINT_PREF_KEY, JSON.stringify(out)) } catch { /* 存不了就算了，不影响打印 */ }
   }
 
@@ -124,8 +172,27 @@ window.PageReport = (() => {
       size,
       photos: size === PRINT_SIZES.A4,
       template: normalizePrintTemplate(pref?.template),
+      custom_id: (typeof pref?.custom_id === 'string' && pref.custom_id) || null,
       forcedA4: false
     }
+  }
+
+  /** 把偏好解析成**这一次打印**真正要用的方案。
+   *  与 effectivePrint 的分工：effectivePrint 只归一偏好本身；
+   *  这里再叠加自定义版式的现实约束 ——
+   *    ① 偏好里的 custom_id 可能已被管理员删除/停用 → 回落标准模板；
+   *    ② 自定义版式的纸张尺寸由配置决定，覆盖本机偏好；
+   *    ③ 照片仍然只允许出现在 A4 上（与 effectivePrint 同一条规则）。 */
+  function resolvePrintPlan() {
+    const eff = effectivePrint(loadPrintPref())
+    let template = eff.template
+    let custom = null
+    if (template === PRINT_TEMPLATES.CUSTOM) {
+      custom = customTplById(eff.custom_id)
+      if (!custom) template = PRINT_TEMPLATES.STANDARD
+    }
+    const size = custom ? custom.config.paper.size : eff.size
+    return { template, custom, size, photos: eff.photos && size === PRINT_SIZES.A4 }
   }
 
   let st = null
@@ -191,6 +258,8 @@ window.PageReport = (() => {
     // 先确保院内可编辑候选库已加载，否则首屏下拉会先用内置兜底库
     await ALLERGENS.ensure()
     try { st.staff = (await API.get('/api/reports/meta/staff')).data } catch { st.staff = [] }
+    /* 预载自定义打印版式：打印是同步流程，且工具条角标要显示版式名 */
+    await ensureCustomTemplates()
     if (App.user.role === 'DOCTOR') st.doctor_id = App.user.id
 
     body.innerHTML = shell()
@@ -570,7 +639,7 @@ window.PageReport = (() => {
 
   /** 一个项目格。r 为 null 时输出占位空格（用于把末行补满 4 列） */
   function cellHtml(r, opts = {}) {
-    const { forPrint = false, ccch2 = false } = opts
+    const { forPrint = false, ccch2 = false, showNo = false } = opts
     if (!r) {
       return `<div class="spt-cell is-pad" aria-hidden="true">
         <div class="spt-cell-no"></div><div class="spt-cell-name"></div><div class="spt-cell-res"></div>
@@ -616,7 +685,7 @@ window.PageReport = (() => {
       </div>`
     return `<div class="spt-cell ${ctrl ? 'is-ctrl' : ''} ${res.kind === 'pos' ? 'is-pos' : res.kind === 'neg' ? 'is-neg' : ''}"
                  data-row="${r.position_no}">
-      ${ccch2 && forPrint ? `${nameCell}${resCell}` : `${noCell}${nameCell}${resCell}`}
+      ${ccch2 && forPrint ? `${showNo ? noCell : ''}${nameCell}${resCell}` : `${noCell}${nameCell}${resCell}`}
     </div>`
   }
 
@@ -632,9 +701,12 @@ window.PageReport = (() => {
     if (forPrint) normals = normals.filter(r => (r.allergen_name || '').trim())
     const ctrls = [rowAt(POS_CTRL), rowAt(NEG_CTRL)].filter(Boolean)
 
-    const eff = effectivePrint(loadPrintPref())
-    const template = normalizePrintTemplate(eff.template)
-    const isCCCH2Print = !!forPrint && template === PRINT_TEMPLATES.CCCH_V2
+    const plan = resolvePrintPlan()
+    const isCCCH2Print = !!forPrint && plan.template === PRINT_TEMPLATES.CCCH_V2
+    /* 自定义版式打印：格子结构复用 ccch2 分支（span 名称 + 空结果补「—」），
+     * 列数/序号/对齐/间隔/最少行数全部来自管理后台的配置。 */
+    const isCustomPrint = !!forPrint && plan.template === PRINT_TEMPLATES.CUSTOM && !!plan.custom
+    const ccfg = isCustomPrint ? plan.custom.config : null
 
     /* 实际列数。屏幕永远 4 列（对齐纸质单实物）；只有 A5 打印时降到 2 列。
      *
@@ -651,8 +723,9 @@ window.PageReport = (() => {
      *   ② 占位补齐按 4 的倍数算 —— 2 列时会多补出半行空格；
      *   ③ 上下键在同列移动用 GRID_COLS 做索引步长。
      * doPrint 本来就有"打印前重渲一次表格"的先例（丢弃空项目），沿用同一条路。 */
-    const cols = (forPrint && eff.size === PRINT_SIZES.A5 && !isCCCH2Print)
-      ? PRINT_COLS_A5 : GRID_COLS
+    const cols = isCustomPrint ? ccfg.table.columns
+      : (forPrint && plan.size === PRINT_SIZES.A5 && !isCCCH2Print)
+        ? PRINT_COLS_A5 : GRID_COLS
 
     /* 序号横向排：顺序铺进网格，CSS grid 自然按行填充。
      *
@@ -671,17 +744,26 @@ window.PageReport = (() => {
     if (isCCCH2Print && cells.length < 16) {
       cells = cells.concat(Array(16 - cells.length).fill(null))
     }
+    /* 自定义版式的「至少占满 N 行」同理：项目太少时中下部留白过大 */
+    if (isCustomPrint && cells.length < ccfg.table.min_rows * cols) {
+      cells = cells.concat(Array(ccfg.table.min_rows * cols - cells.length).fill(null))
+    }
 
     /* 列数同时写进 class 与 CSS 变量：
      *   class 给打印 CSS 做选择器（.spt-cols-2 单独一套小列宽）；
      *   --spt-cols 让 grid-template-columns 能按实际列数 repeat()，
      *   避免"CSS 里写死 4、JS 却渲染了 2"这种必然错位的双份真相。 */
     document.getElementById('spt-table-wrap').innerHTML = `
-      <div class="spt-grid4 spt-cols-${cols} ${isCCCH2Print ? 'spt-grid-ccch2' : ''}" style="--spt-cols:${cols}">
+      <div class="spt-grid4 spt-cols-${cols} ${isCCCH2Print ? 'spt-grid-ccch2' : ''} ${isCustomPrint ? 'spt-grid-cpt' : ''} ${isCustomPrint && ccfg.table.result_align === 'left' ? 'cpt-align-left' : ''}"
+           style="--spt-cols:${cols};${isCustomPrint ? `--cpt-gap:${ccfg.table.gap_px}px;` : ''}">
         <div class="spt-grid4-head">
           ${Array.from({ length: cols }, () => `<div class="spt-h">序号</div><div class="spt-h">检测项目</div><div class="spt-h">结果</div>`).join('')}
         </div>
-        <div class="spt-grid4-body">${cells.map(c => cellHtml(c, { forPrint, ccch2: isCCCH2Print })).join('')}</div>
+        <div class="spt-grid4-body">${cells.map(c => cellHtml(c, {
+          forPrint,
+          ccch2: isCCCH2Print || isCustomPrint,
+          showNo: isCustomPrint ? ccfg.table.show_no : false
+        })).join('')}</div>
       </div>
       <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 no-print">
         <button id="btn-add-pos" class="btn btn-xs btn-ghost" ${normals.length >= MAX_POS_COUNT ? 'disabled' : ''}>
@@ -712,9 +794,48 @@ window.PageReport = (() => {
    * 压扁往一页里塞，对照标签跟着被挤成一团 —— 用户打出来看到的正是这个。
    * 改为真去量：总高减去表格以外所有区块的实际占用，剩多少分多少。
    */
+  /* 离屏测量打印页眉/页脚的实际高度。
+   * .print-head/.print-foot 在屏幕媒体下是 display:none，直接量恒为 0；
+   * 又不能真显示出来量（会闪一下）。临时改成 absolute + visibility:hidden
+   * 渲染到视口外：参与布局（量得到高）但肉眼不可见。
+   * 宽度固定 703px = 打印可用宽（A4 纵向与 A5 横向同为 210mm-24mm≈703px），
+   * .cpt-* 视觉样式是全局段（非 @media print），离屏量出的高度与纸上一致。 */
+  function measurePrintPartHeight(el) {
+    if (!el || !el.innerHTML.trim()) return 0
+    const prev = el.getAttribute('style') || ''
+    el.style.cssText = 'display:block;position:absolute;visibility:hidden;left:-9999px;top:0;width:703px'
+    const h = el.getBoundingClientRect().height
+    if (prev) el.setAttribute('style', prev)
+    else el.removeAttribute('style')
+    return h
+  }
+
   function measureRowHeight(rows) {
     const wrap = document.querySelector('.spt-grid4')
     if (!wrap) return 40
+    const plan = resolvePrintPlan()
+    /* 自定义版式（CUSTOM）打印时，纸上只有：print-head + 表格 + [照片区] + print-foot。
+     * 屏幕上的患者信息区/症状区/卡片标题条全被 CSS 隐藏（见 style.css 的
+     * html[data-print-template=CUSTOM] 段）。下面通用分支是按「屏幕可见即纸上
+     * 占位」累加的，对 CUSTOM 会把患者信息区等一大块算成已占用，行高被压到
+     * 下限 —— 用户看到的正是「内容挤在纸张上部、下方大片空白」。
+     * 这里单独算：头尾离屏实测，可用高度全部分给表格行。 */
+    if (plan.template === PRINT_TEMPLATES.CUSTOM) {
+      const bodyPx = plan.size === PRINT_SIZES.A5 ? A5_BODY_PX : A4_BODY_PX
+      let used = measurePrintPartHeight(document.getElementById('print-head'))
+        + measurePrintPartHeight(document.getElementById('print-foot'))
+      /* 照片区只在 A4 且确有照片时上纸（plan.photos 已含该约束） */
+      if (plan.photos && st && (st.photos.length || st.newPhotos.length)) {
+        const ps = document.getElementById('photo-section')
+        if (ps) used += ps.getBoundingClientRect().height
+      }
+      /* 32px 余量：CUSTOM 的表格上下边框线 + print-head/foot 的打印态
+       * margin（@media print 里的 .56rem/.52rem，离屏测不到）+ 分页取整。 */
+      /* row-gap（CSS .44rem≈7px）不含在行高里，必须从可用高度先扣掉，
+       * 否则行数多时累计溢出把末行挤到第 2 页 */
+      const avail = bodyPx - used - 32 - Math.max(0, rows - 1) * 7
+      return Math.floor(avail / Math.max(1, rows))
+    }
     const card = wrap.closest('.card') || wrap.parentElement
     const page = card && card.parentElement
     let used = 0
@@ -745,7 +866,7 @@ window.PageReport = (() => {
     /* 纸高按当前生效版式取：A5 只有 A4 的约 68%（703 vs 1032），
      * 继续用 A4 的高度去分行高，会算出一个 A5 装不下的值，
      * 末行被挤到第 2 页 —— 正是 A4 时代那个"丢末项"的老 bug 换张纸重演。 */
-    const bodyPx = effectivePrint(loadPrintPref()).size === PRINT_SIZES.A5 ? A5_BODY_PX : A4_BODY_PX
+    const bodyPx = resolvePrintPlan().size === PRINT_SIZES.A5 ? A5_BODY_PX : A4_BODY_PX
     const avail = bodyPx - used - headH - footH - 24
     return Math.floor(avail / Math.max(1, rows))
   }
@@ -761,8 +882,14 @@ window.PageReport = (() => {
      * 遇到照片/长诊断把其它区块撑高的情况就会突破纸高。
      * A5 放宽到 22px：这是"挤但仍能看清"与"溢出到第二页"之间的取舍，
      * 而 A5 本来就是给不带照片的精简存档用的，字小一点可接受。 */
-    const isA5 = effectivePrint(loadPrintPref()).size === PRINT_SIZES.A5
-    const h = Math.max(isA5 ? 22 : 28, Math.min(52, measureRowHeight(rows)))
+    const plan = resolvePrintPlan()
+    const isA5 = plan.size === PRINT_SIZES.A5
+    /* CUSTOM：无边框紧凑风格，行内只有一行文字（约 23px），下限给 26px；
+     * 上限放宽到 58px —— 项目少时行距拉开一点，内容纵向铺满版面，
+     * 而不是全挤在纸张上部（用户报的「样式有问题」主要就是这个）。 */
+    const lo = plan.template === PRINT_TEMPLATES.CUSTOM ? 26 : (isA5 ? 22 : 28)
+    const hi = plan.template === PRINT_TEMPLATES.CUSTOM ? 58 : 52
+    const h = Math.max(lo, Math.min(hi, measureRowHeight(rows)))
     wrap.style.setProperty('--spt-row-h', h + 'px')
   }
 
@@ -1019,8 +1146,8 @@ window.PageReport = (() => {
     const foot = document.getElementById('print-foot')
     if (!head || !foot) return
 
-    const eff = effectivePrint(loadPrintPref())
-    const template = normalizePrintTemplate(eff.template)
+    const plan = resolvePrintPlan()
+    const template = plan.template
 
     const p = st.patient || {}
     const hospital = App.user?.hospital_name || ''
@@ -1038,6 +1165,38 @@ window.PageReport = (() => {
      * 屏幕角标是食入组、纸上却印吸入组，临床上这是两种完全不同的检测。
      * 没选模板（手工逐项填写）时回退到默认标题。 */
     const tplTitle = (st.template_name || '').trim()
+
+    if (template === PRINT_TEMPLATES.CUSTOM && plan.custom) {
+      /* 自定义版式：头尾交给共享渲染器 PrintRender —— 与管理后台预览是同
+       * 一份实现，保证「预览什么样、打出来就什么样」。这里只负责取值。 */
+      const cfg = plan.custom.config
+      const genderText = p.gender === 'M' ? '男' : p.gender === 'F' ? '女' : ''
+      const ageText = (st.patient_age_snapshot || (p.age_years ? `${p.age_years}岁` : '') || '').toString()
+      head.innerHTML = PrintRender.renderHead(cfg, {
+        hospital_name: customTpl.hospital.name || hospital,
+        logo_src: customTpl.logo_src || '',
+        template_name: tplTitle,
+        patient: {
+          name: p.name || '',
+          gender: genderText,
+          age: ageText,
+          medical_record_no: st.medical_record_no || '',
+          department: st.department || '',
+          applying_doctor: st.applying_doctor || doctorName || '',
+          applied_at: st.applied_at || st.report_date || '',
+          serial_no: st.serial_no || '',
+          clinical_diagnosis: st.clinical_diagnosis || st.symptoms || '',
+          remarks: st.remarks || ''
+        }
+      })
+      foot.innerHTML = `<div class="cpt-foot">${PrintRender.renderFoot(cfg, {
+        executed_at: st.executed_at || '',
+        reported_at: st.reported_at || '',
+        tester: st.tester_name || '',
+        reviewer: st.reviewer_name || App.user?.real_name || App.user?.username || ''
+      })}</div>`
+      return
+    }
 
     if (template === PRINT_TEMPLATES.CCCH_V2) {
       const genderText = p.gender === 'M' ? '男' : p.gender === 'F' ? '女' : ''
@@ -1191,8 +1350,8 @@ window.PageReport = (() => {
   function renderPrintPrefTag() {
     const el = document.getElementById('print-pref-tag')
     if (!el) return
-    const eff = effectivePrint(loadPrintPref())
-    el.textContent = `${eff.size}${eff.photos ? '·含照片' : '·无照片'}·${printTemplateLabel(eff.template)}`
+    const plan = resolvePrintPlan()
+    el.textContent = `${plan.size}${plan.photos ? '·含照片' : '·无照片'}·${printTemplateLabel(plan.template, plan.custom && plan.custom.id)}`
   }
 
   /**
@@ -1234,7 +1393,10 @@ window.PageReport = (() => {
             <div class="grid grid-cols-2 gap-2">
               <button data-tpl="STANDARD" class="btn btn-sm">标准模板</button>
               ${canUseCCCHTemplate() ? '<button data-tpl="CCCH_V2" class="btn btn-sm">长春儿医定制模板</button>' : ''}
+              ${customTpl.list.map(t => `<button data-tpl="CUSTOM" data-cid="${UI.esc(t.id)}" class="btn btn-sm" title="管理后台配置的版式">
+                <i class="fas fa-file-invoice"></i>${UI.esc(t.name)}</button>`).join('')}
             </div>
+            <p id="pp-tpl-note" class="mt-2 text-xs leading-relaxed text-slate-500 hidden"></p>
           </div>
         </div>
         <div class="px-5 py-3 bg-slate-50 flex justify-end gap-2">
@@ -1247,7 +1409,13 @@ window.PageReport = (() => {
     const draft = {
       size: cur.size,
       photos: cur.photos,
-      template: normalizePrintTemplate(cur.template)
+      template: normalizePrintTemplate(cur.template),
+      custom_id: cur.custom_id || null
+    }
+    /* 偏好里指向的自定义版式已被删除/停用时，别让对话框高亮一个不存在的选项 */
+    if (draft.template === PRINT_TEMPLATES.CUSTOM && !customTplById(draft.custom_id)) {
+      draft.template = PRINT_TEMPLATES.STANDARD
+      draft.custom_id = null
     }
     const paint = () => {
       wrap.querySelectorAll('[data-ph]').forEach(b => {
@@ -1266,8 +1434,34 @@ window.PageReport = (() => {
       })
       wrap.querySelectorAll('[data-tpl]').forEach(b => {
         const on = draft.template === b.dataset.tpl
+          && (b.dataset.tpl !== PRINT_TEMPLATES.CUSTOM || b.dataset.cid === draft.custom_id)
         b.className = 'btn btn-sm flex-1 ' + (on ? 'btn-primary' : 'btn-ghost')
       })
+      /* 自定义版式的纸张尺寸由管理后台配置决定，本机的 A4/A5 选择不生效：
+       * 按钮置灰 + 说明，避免用户以为选了 A5 却打出 A4 是 bug。 */
+      const isCustom = draft.template === PRINT_TEMPLATES.CUSTOM
+      const cSel = isCustom ? customTplById(draft.custom_id) : null
+      wrap.querySelectorAll('[data-sz]').forEach(b => {
+        if (!isCustom) return
+        b.disabled = true
+        b.className = 'btn btn-sm flex-1 btn-ghost opacity-40 cursor-not-allowed'
+      })
+      const tplNote = wrap.querySelector('#pp-tpl-note')
+      if (tplNote) {
+        if (isCustom && cSel) {
+          tplNote.classList.remove('hidden')
+          /* Chromium 系浏览器不会按 CSS @page 自动切换打印机纸张
+           * （chromium issue 41010929）：页面盒子是 A5 横向，但打印对话框的
+           * 纸张下拉仍停在打印机默认（通常 A4），不提醒的话打出来就是
+           * 「A4 纸上一块 A5 内容」。这里明说操作步骤。 */
+          tplNote.textContent = `「${cSel.name}」由管理后台统一配置，纸张固定为 ${cSel.config.paper.size}。`
+            + (cSel.config.paper.size === PRINT_SIZES.A5
+              ? '打印时请在浏览器打印窗口「更多设置 → 纸张尺寸」中选择 A5，方向会自动横向。'
+              : '')
+        } else {
+          tplNote.classList.add('hidden')
+        }
+      }
       const note = wrap.querySelector('#pp-note')
       if (draft.photos) {
         note.className = 'mt-2 text-xs leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5'
@@ -1275,6 +1469,7 @@ window.PageReport = (() => {
       } else {
         note.className = 'mt-2 text-xs leading-relaxed text-slate-500'
         note.textContent = '不打印照片时 A4 / A5 均可。A5 更省纸，适合病历存档。'
+          + (draft.size === PRINT_SIZES.A5 ? '选 A5 后，请在浏览器打印窗口「更多设置 → 纸张尺寸」中也选 A5。' : '')
       }
     }
     paint()
@@ -1288,14 +1483,18 @@ window.PageReport = (() => {
         const sz = e.target.closest('[data-sz]')
         if (sz && !sz.disabled) { draft.size = sz.dataset.sz; paint(); return }
         const tpl = e.target.closest('[data-tpl]')
-        if (tpl) { draft.template = normalizePrintTemplate(tpl.dataset.tpl); paint(); return }
+        if (tpl) {
+          draft.template = normalizePrintTemplate(tpl.dataset.tpl)
+          draft.custom_id = tpl.dataset.tpl === PRINT_TEMPLATES.CUSTOM ? (tpl.dataset.cid || null) : null
+          paint(); return
+        }
         const act = e.target.closest('[data-act]')
         if (!act) return
         if (act.dataset.act === 'ok') {
-          savePrintPref({ size: draft.size, photos: draft.photos, template: draft.template })
+          savePrintPref({ size: draft.size, photos: draft.photos, template: draft.template, custom_id: draft.custom_id })
           renderPrintPrefTag()
-          const eff = effectivePrint(draft)
-          UI.toast(`打印版式：${eff.size}${eff.photos ? '，含手臂照片' : '，不含照片'}，${printTemplateLabel(eff.template)}`, 'success')
+          const plan = resolvePrintPlan()
+          UI.toast(`打印版式：${plan.size}${plan.photos ? '，含手臂照片' : '，不含照片'}，${printTemplateLabel(plan.template, plan.custom && plan.custom.id)}`, 'success')
           return close(true)
         }
         close(false)
@@ -1310,12 +1509,12 @@ window.PageReport = (() => {
      * 纸张尺寸走动态注入的 @page（见 applyPageSize），
      * 其余版式差异（字号、列宽、照片显隐）走 <html> 上的 data 属性 ——
      * 这些是普通选择器，属性驱动完全可靠。 */
-    const eff = effectivePrint(loadPrintPref())
-    applyPageSize(eff.size)
+    const plan = resolvePrintPlan()
+    applyPageSize(plan.size)
     const root = document.documentElement
-    root.setAttribute('data-print-size', eff.size)
-    root.setAttribute('data-print-photos', eff.photos ? '1' : '0')
-    root.setAttribute('data-print-template', eff.template)
+    root.setAttribute('data-print-size', plan.size)
+    root.setAttribute('data-print-photos', plan.photos ? '1' : '0')
+    root.setAttribute('data-print-template', plan.template)
 
     /* 空项目（没填过敏原名称的格子）只在屏幕上留着给护士填，纸上不印。
      * 这里整表重渲一次：不能用 display:none 藏格子 —— 网格靠 grid 自动
@@ -1330,8 +1529,11 @@ window.PageReport = (() => {
      * 空结果补「—」）都在 cellHtml 的 ccch2 分支里，只有 renderTable(true)
      * 才会走到。此前仅靠 hasEmpty 碰巧为真才重渲 —— 一旦项目全填满，
      * 打印的就是屏幕版 <input> 结构，CCCH_V2 的紧凑间距根本不生效。 */
-    const needRerender = hasEmpty || eff.size === PRINT_SIZES.A5
-      || normalizePrintTemplate(eff.template) === PRINT_TEMPLATES.CCCH_V2
+    /* 自定义版式同理必须重渲：格子结构复用 ccch2 分支，且列数/序号/
+     * 间隔全在 renderTable(true) 里按配置生成。 */
+    const needRerender = hasEmpty || plan.size === PRINT_SIZES.A5
+      || plan.template === PRINT_TEMPLATES.CCCH_V2
+      || plan.template === PRINT_TEMPLATES.CUSTOM
     if (needRerender) renderTable(true)
 
     /* 备注已于 2026-08 按使用方要求移除，这里只剩症状一项。
@@ -1375,7 +1577,7 @@ window.PageReport = (() => {
      * 那是 @media print 里的规则，而 measureRowHeight 在**屏幕媒体**下执行，
      * getComputedStyle 读不到它 —— 照片区的高度会被算进"已占用"，
      * 于是行高被压扁，明明腾出了一整块空间却不用，白挤。 */
-    const hidePhotos = !eff.photos || (!st.photos.length && !st.newPhotos.length)
+    const hidePhotos = !plan.photos || (!st.photos.length && !st.newPhotos.length)
     if (hidePhotos) {
       const ps = document.getElementById('photo-section')
       if (ps) emptied.push(ps)
@@ -1425,6 +1627,12 @@ window.PageReport = (() => {
       applyRowHeight(cells, cols)
     }
 
+    /* A5 提醒放在 print() 之前入队：打印对话框期间页面被遮住，
+     * 用户关掉对话框后还能看到；放 print() 之后某些浏览器会因
+     * 对话框阻塞导致 toast 直接错过展示窗口。 */
+    if (plan.size === PRINT_SIZES.A5) {
+      UI.toast('A5 版式：请在打印窗口「更多设置 → 纸张尺寸」确认已选 A5', 'info')
+    }
     window.print()
     // 部分浏览器不触发 afterprint（如打印预览被直接取消），兜底还原
     setTimeout(restore, 1500)

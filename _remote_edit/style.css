@@ -936,5 +936,238 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft Ya
     text-decoration:none;
   }
 
+  /* ============ 自定义版式（CUSTOM，管理后台「报告单版式」配置） ============
+   * 头/尾由 print-render.js（window.PrintRender）渲染成 .cpt-* 结构，
+   * .cpt-* 的视觉样式定义在文件末尾的全局段（预览与打印共用同一套）。
+   * 这里只做打印页面级的开关：隐藏屏幕版信息区、收紧上下留白、
+   * 以及表格 .spt-grid-cpt 的打印形态（复用 CCCH_V2 的无边框紧凑风格，
+   * 列数/间隔来自 renderTable 写进行内样式的 --spt-cols / --cpt-gap）。 */
+  html[data-print-template="CUSTOM"] {
+    font-size: 13px;
+  }
+  html[data-print-template="CUSTOM"] #patient-section,
+  html[data-print-template="CUSTOM"] .rp-textareas {
+    display:none !important;
+  }
+  html[data-print-template="CUSTOM"] .card > div.bg-slate-50 { display:none !important; }
+  html[data-print-template="CUSTOM"] .print-head { margin-top:0 !important; margin-bottom:.56rem !important; }
+  html[data-print-template="CUSTOM"] .print-foot { margin-top:.52rem !important; }
+  /* 照片区：与 CCCH_V2 同款紧凑处理（无边框、小标题）。
+   * 是否打印照片由 doPrint 的 emptied 路径决定，这里只管样子。 */
+  html[data-print-template="CUSTOM"] #photo-section {
+    border:0 !important; box-shadow:none !important; padding:0 !important;
+    margin-top:.4rem !important;
+  }
+  html[data-print-template="CUSTOM"] #photo-section h3 {
+    font-size:.78rem !important; margin-bottom:.25rem !important;
+  }
+
+  /* ---- 表格：.spt-grid-cpt（renderTable 的自定义打印形态） ---- */
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-head { display:none !important; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-body {
+    grid-template-columns:repeat(var(--spt-cols, 4), minmax(0, 1fr)) !important;
+    justify-content:stretch;
+    column-gap:0;
+    border-top:1px solid #000;
+    border-bottom:1px solid #000;
+    padding:.1rem 0;
+    row-gap:.44rem;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    border:0 !important;
+    /* 行高吃 JS 算出的 --spt-row-h（见 applyRowHeight 的 CUSTOM 分支）：
+     * 之前写死 1.62rem，行高变量进不来，项目少时内容全挤在纸张上部、
+     * 下方大片空白 —— 正是用户报的「样式有问题」。1.62rem 只作兜底。 */
+    min-height:var(--spt-row-h, 1.62rem) !important;
+    background:#fff !important;
+    font-size:.86rem !important;
+    padding:0 !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell {
+    grid-column:span 1 !important;
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:var(--cpt-gap, 20px);
+    white-space:nowrap;
+    padding-right:32px;
+    min-width:0;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no {
+    order:0;
+    font-weight:600;
+    font-size:.78rem !important;
+    color:#000;
+    flex:0 0 auto;
+    width:auto !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name { order:1; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    order:2;
+    justify-content:flex-end;
+    margin-left:auto;   /* 结果右对齐（result_align=right，默认） */
+    padding-left:0 !important;
+    width:auto !important;
+    min-width:0 !important;
+    font-weight:400 !important;
+    font-size:.9rem !important;
+    line-height:1.42 !important;
+  }
+  /* result_align=left：结果紧跟名称，间隔就是 --cpt-gap */
+  html[data-print-template="CUSTOM"] .spt-grid-cpt.cpt-align-left .spt-cell-res {
+    margin-left:0;
+    justify-content:flex-start;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-name-print {
+    font-size:.9rem;
+    line-height:1.42;
+    white-space:nowrap;
+    color:#000;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-ctrl > *,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-pos > *,
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-neg > * {
+    background:#fff !important;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell.is-pad { visibility:hidden; }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-ctrl-label {
+    display:inline; font-size:.78rem; font-weight:600;
+  }
+  html[data-print-template="CUSTOM"] .spt-grid-cpt .spt-ctrl-label i {
+    display:inline; font-style:normal;
+  }
+
+  /* ---- CUSTOM × A5 横向：整体收紧一档 ----
+   * A5 横向可用高仅约 469px（A4 纵向 1032px 的 45%），
+   * 头部字号/边距按 A4 的规格排会占掉近一半纸高。
+   * 宽度与 A4 纵向相同（都是 210mm-24mm），所以只压纵向，不动列数。 */
+  html[data-print-size="A5"][data-print-template="CUSTOM"] { font-size:12px; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .print-head { margin-bottom:.3rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .print-foot { margin-top:.3rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-head { padding-bottom:4px; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-stacked .cpt-hosp,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-inline .cpt-hosp {
+    font-size:1.02rem; line-height:1.25;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-stacked .cpt-title,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-topline.cpt-inline .cpt-title {
+    font-size:.92rem; margin-top:2px;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-meta {
+    font-size:.7rem; row-gap:2px; margin-top:4px;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-grid4-body {
+    row-gap:.26rem;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-name,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-no,
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res {
+    font-size:.78rem !important;
+  }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-name-print { font-size:.8rem; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .spt-grid-cpt .spt-cell-res { font-size:.82rem !important; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-foot-row { font-size:.7rem; }
+  html[data-print-size="A5"][data-print-template="CUSTOM"] .cpt-foot-note { font-size:.62rem; margin-top:4px; }
+
 }
 .print-only, .print-head, .print-foot { display:none; }
+
+
+/* =============================================================================
+ * .cpt-* —— 自定义报告单版式（print-render.js 输出的结构）
+ * -----------------------------------------------------------------------------
+ * 两个消费场景共用这一套样式，保证「预览什么样、打出来就什么样」：
+ *   ① 管理后台「报告单版式」页 #pt-preview 里的实时预览（屏幕媒体）；
+ *   ② 报告单打印（.print-head/.print-foot 内，打印媒体）。
+ * 所以这里刻意不写进 @media print，也不用屏幕特有的交互样式。
+ * ========================================================================== */
+.cpt-page {
+  background:#fff; color:#000; padding:24px 28px;
+  font-family:inherit; line-height:1.45;
+  border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,.08);
+}
+/* 预览容器里模拟纸张比例；打印时用不到 .cpt-page（头尾直接渲进 print-head/foot） */
+.cpt-a4 { width:100%; max-width:760px; min-height:640px; margin:0 auto; }
+.cpt-a5 { width:100%; max-width:760px; min-height:420px; margin:0 auto; }
+
+.cpt-head { border-bottom:2px solid #000; padding-bottom:6px; }
+
+/* 一行式表头（长春儿医风格）：左标 | ✚/logo | 医院名 | 标题 */
+.cpt-topline.cpt-inline {
+  display:grid;
+  grid-template-columns:auto auto 1fr auto;
+  align-items:center;
+  column-gap:10px;
+}
+.cpt-topline.cpt-inline .cpt-left { font-size:1rem; font-weight:700; white-space:nowrap; }
+.cpt-topline.cpt-inline .cpt-brand {
+  font-size:1.5rem; font-weight:700; line-height:1;
+  display:flex; align-items:center;
+}
+.cpt-topline.cpt-inline .cpt-hosp {
+  font-size:.98rem; font-weight:700; line-height:1.28; letter-spacing:.04em;
+}
+.cpt-topline.cpt-inline .cpt-title {
+  font-size:1.05rem; font-weight:700; white-space:nowrap; justify-self:end;
+}
+
+/* 居中式表头（通用）：logo+医院名一行，标题独立一行 */
+.cpt-topline.cpt-stacked { text-align:center; }
+.cpt-topline.cpt-stacked .cpt-hosp-row {
+  display:flex; align-items:center; justify-content:center; gap:10px;
+}
+.cpt-topline.cpt-stacked .cpt-hosp {
+  font-size:1.02rem; font-weight:600; letter-spacing:.08em; line-height:1.3;
+}
+.cpt-topline.cpt-stacked .cpt-title {
+  font-size:1.22rem; font-weight:700; letter-spacing:.12em; margin-top:3px;
+}
+
+/* 患者信息区：列数由 print-render.js 写进行内样式 grid-template-columns */
+.cpt-meta {
+  display:grid;
+  gap:3px 12px;
+  font-size:.8rem;
+  line-height:1.5;
+  margin-top:6px;
+  padding-top:4px;
+}
+.cpt-meta > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.cpt-meta > div > span { color:#000; }
+/* 自定义条目「固定内容留空」时的手填横线（患者信息区用；页脚已有 sig 内联横线） */
+.cpt-blank {
+  display:inline-block; min-width:64px; height:1em;
+  border-bottom:1px solid #000; vertical-align:bottom;
+}
+
+/* 预览用示例表格（打印端的真实表格走 .spt-grid-cpt，见 @media print 段） */
+.cpt-grid {
+  display:grid;
+  border-top:1px solid #000;
+  border-bottom:1px solid #000;
+  padding:4px 0;
+  row-gap:7px;
+  margin-top:8px;
+  font-size:.86rem;
+}
+.cpt-grid .cpt-cell {
+  display:flex; align-items:center; white-space:nowrap;
+  padding-right:24px; min-width:0; min-height:1.6rem;
+}
+.cpt-grid .cpt-no { font-weight:600; font-size:.78rem; margin-right:6px; flex:0 0 auto; }
+.cpt-grid .cpt-name { overflow:hidden; text-overflow:ellipsis; }
+.cpt-grid .cpt-res { font-weight:400; }
+
+/* 页脚 */
+.cpt-foot { margin-top:8px; }
+.cpt-foot-row {
+  display:grid;
+  gap:4px 10px;
+  font-size:.8rem;
+  line-height:1.4;
+  white-space:nowrap;
+}
+.cpt-foot-row > div { display:flex; align-items:flex-end; gap:2px; min-width:0; }
+.cpt-foot-note { font-size:.68rem; color:#333; margin-top:6px; }
