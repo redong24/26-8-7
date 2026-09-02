@@ -223,7 +223,7 @@ body{
 .toolbar{
   position:sticky; top:0; z-index:50; background:#14181F; color:#fff;
   padding:10px 16px; display:flex; gap:10px; align-items:center;
-  flex-wrap:wrap; font-size:13px;
+  flex-wrap:wrap; font-size:16px;
 }
 .toolbar .sp{flex:1;}
 .toolbar button{
@@ -232,13 +232,13 @@ body{
 }
 .toolbar button.primary{background:var(--brand); border-color:var(--brand);}
 .toolbar button:hover{filter:brightness(1.15);}
-.toolbar .hint{color:#AEB6C2; font-size:12px;}
+.toolbar .hint{color:#AEB6C2; font-size:16px;}
 /* ---- 页头 ---- */
 .rpt-head{border-bottom:2px solid var(--brand); padding-bottom:10px;
           display:flex; align-items:flex-start; gap:14px;}
 .rpt-head h1{margin:0; font-size:21px; letter-spacing:.5px;}
-.rpt-head .sub{color:var(--ink-3); font-size:11px; margin-top:3px;}
-.rpt-head .meta{margin-left:auto; text-align:right; font-size:11px;
+.rpt-head .sub{color:var(--ink-3); font-size:16px; margin-top:3px;}
+.rpt-head .meta{margin-left:auto; text-align:right; font-size:16px;
                 color:var(--ink-2); line-height:1.7; white-space:nowrap;}
 .rpt-head .meta b{color:var(--ink); font-weight:600;}
 /* ---- 缺数据横幅（拍板4：允许生成但显著标注）---- */
@@ -247,17 +247,17 @@ body{
   background:var(--warn-bg); color:var(--warn-ink); padding:9px 12px;
   border-radius:3px; page-break-inside:avoid;
 }
-.banner .t{font-weight:700; font-size:12.5px;}
+.banner .t{font-weight:700; font-size:16px;}
 .banner ul{margin:5px 0 0 18px; padding:0;}
 .banner li{margin:2px 0;}
 .banner.ok{background:#EAF6EE; border-color:#3E8E5A; color:#1B5E33;}
 /* ---- 区块 ---- */
 .sec{margin-top:16px; page-break-inside:avoid;}
 .sec>h2{
-  font-size:13.5px; margin:0 0 8px; padding-left:9px;
+  font-size:16px; margin:0 0 8px; padding-left:9px;
   border-left:4px solid var(--brand); line-height:1.25;
 }
-.sec>h2 small{font-weight:400; color:var(--ink-3); font-size:10.5px;
+.sec>h2 small{font-weight:400; color:var(--ink-3); font-size:16px;
               margin-left:6px;}
 .sec.alt>h2{border-left-color:var(--brand-2);}
 /* ---- 综合评分 ---- */
@@ -269,12 +269,12 @@ body{
 }
 .hero .big .v{font-size:40px; font-weight:700; line-height:1.05;
               color:var(--brand);}
-.hero .big .v small{font-size:14px; font-weight:400; color:var(--ink-3);}
-.hero .big .k{font-size:11px; color:var(--ink-2); margin-top:2px;}
-.hero .big .lv{margin-top:5px; font-size:12px; font-weight:700;}
-.hero .txt{flex:1; font-size:11.5px; color:var(--ink-2);}
+.hero .big .v small{font-size:16px; font-weight:400; color:var(--ink-3);}
+.hero .big .k{font-size:16px; color:var(--ink-2); margin-top:2px;}
+.hero .big .lv{margin-top:5px; font-size:16px; font-weight:700;}
+.hero .txt{flex:1; font-size:16px; color:var(--ink-2);}
 /* ---- 表格 ---- */
-table.t{width:100%; border-collapse:collapse; font-size:11px;}
+table.t{width:100%; border-collapse:collapse; font-size:16px;}
 table.t th,table.t td{border:1px solid var(--line); padding:4px 7px;
                       text-align:left; vertical-align:top;}
 table.t th{background:#F5F7FA; font-weight:600; color:var(--ink-2);
@@ -292,28 +292,28 @@ table.t td.dash{color:var(--ink-3);}
 .cols{display:flex; gap:14px;}
 .cols>*{flex:1; min-width:0;}
 /* ---- 逐题作答（拍板3）---- */
-.qa{font-size:10.5px;}
+.qa{font-size:16px;}
 .qa th,.qa td{padding:3px 6px;}
 .qa .q{width:auto;}
 .qa .ans{white-space:nowrap; font-weight:600;}
-.privacy{font-size:10px; color:var(--ink-3); margin:0 0 6px;}
+.privacy{font-size:16px; color:var(--ink-3); margin:0 0 6px;}
 /* ---- 附录 / 免责 ---- */
-.note{font-size:10.5px; color:var(--ink-2); line-height:1.65;}
+.note{font-size:16px; color:var(--ink-2); line-height:1.65;}
 .note ul{margin:4px 0 0 16px; padding:0;}
 .note li{margin:2.5px 0;}
 .disc{
   margin-top:14px; border:1px solid var(--line); border-radius:3px;
-  background:#FAFBFC; padding:9px 12px; font-size:10.5px; color:var(--ink-2);
+  background:#FAFBFC; padding:9px 12px; font-size:16px; color:var(--ink-2);
   page-break-inside:avoid;
 }
 .disc b{color:#B3261E;}
 .foot{margin-top:12px; border-top:1px solid var(--line); padding-top:7px;
-      font-size:9.5px; color:var(--ink-3); display:flex; gap:10px;}
+      font-size:16px; color:var(--ink-3); display:flex; gap:10px;}
 .foot .sp{flex:1;}
 .tag{display:inline-block; padding:1px 6px; border-radius:9px;
-     font-size:9.5px; border:1px solid currentColor; white-space:nowrap;}
+     font-size:16px; border:1px solid currentColor; white-space:nowrap;}
 .pill{display:inline-block; padding:1px 7px; border-radius:3px; color:#fff;
-      font-size:10px; font-weight:600; white-space:nowrap;}
+      font-size:16px; font-weight:600; white-space:nowrap;}
 
 /* ================= 打印 ================= */
 @page{ size:A4 portrait; margin:14mm; }
@@ -436,7 +436,7 @@ def _sec_conclusion(snap):
         return ""
     return ('<div class="sec"><h2>核心结论'
             '<small>由测量数据按既定规则生成，不含模型推断</small></h2>'
-            '<div class="note" style="font-size:11.5px">%s</div></div>'
+            '<div class="note" style="font-size:16px">%s</div></div>'
             % "".join(body))
 
 
@@ -499,12 +499,12 @@ def _sec_ai(snap):
     if ai.get("generated_at") or ai.get("cached_at"):
         bits.append("生成时间 %s"
                     % _ts(ai.get("generated_at") or ai.get("cached_at")))
-    meta = ('<div style="margin-top:6px;font-size:10px;color:#6B7480">'
+    meta = ('<div style="margin-top:6px;font-size:16px;color:#6B7480">'
             '%s　本段由语言模型基于上方实测指标生成，'
             '仅对已采集项作出描述。</div>' % "　".join(bits)) if bits else ""
 
     return ('<div class="sec"><h2>AI 综合解读</h2>'
-            '<div class="note" style="font-size:11.5px">%s%s</div></div>'
+            '<div class="note" style="font-size:16px">%s%s</div></div>'
             % ("".join(body), meta))
 
 
