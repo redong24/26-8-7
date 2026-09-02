@@ -212,7 +212,7 @@ body{
   background:#F2F4F7; color:var(--ink);
   font-family:"Source Han Sans SC","Noto Sans CJK SC","Microsoft YaHei",
               "PingFang SC","Hiragino Sans GB",sans-serif;
-  font-size:12px; line-height:1.6;
+  font-size:16px; line-height:1.6;
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
 .sheet{
