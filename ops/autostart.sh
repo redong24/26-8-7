@@ -33,6 +33,23 @@ FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
 # ---- 节流 ----
+# ---- 0) 保证 cron 守护进程在跑 —— 这一步刻意放在节流之前 ----
+# 理由：cron 是整条自愈链的根。@reboot 拉服务、*/10 巡检、05:00 重启，
+# 全都挂在 cron 上；cron 自己没起来，后面所有兜底机制一起失效。
+# 而 WSL 实例重启后 cron 默认就是不运行的（本机 systemd 未生效，
+# 没有服务管理器帮它起来），这恰恰是最需要自愈的时刻。
+# 若放在节流之后，"6 小时内已跑过" 就会把这次检查跳掉，
+# 于是实例重启后整整 6 小时处于无人值守状态。
+# 这个检查只有一次 pgrep，代价可以忽略，不值得为它省。
+if ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
+    if sudo -n service cron start >/dev/null 2>&1; then
+        echo "$(date '+%F %T') 已拉起 cron 守护进程" >> "$LOG"
+    else
+        echo "$(date '+%F %T') cron 未运行且无免密权限（定时任务不会触发，需手动 sudo service cron start）" >> "$LOG"
+    fi
+fi
+
+# ---- 节流：补服务这件事没必要每开一个终端就做一次 ----
 if [ "$FORCE" -eq 0 ] && [ -f "$STAMP" ]; then
     last=$(stat -c %Y "$STAMP" 2>/dev/null || echo 0)
     now=$(date +%s)
@@ -46,19 +63,21 @@ exec >> "$LOG" 2>&1
 echo ""
 echo "--- autostart $(date '+%F %T') ---"
 
-# ---- 1) 尽力保证 cron 守护进程在跑（不成功也不影响后面） ----
-if ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
-    if sudo -n service cron start >/dev/null 2>&1; then
-        echo "已拉起 cron 守护进程"
-    else
-        echo "cron 未运行且无免密权限，跳过（05:00 定时任务不会触发，需手动 sudo service cron start）"
-    fi
-fi
-
 # ---- 2) 缺谁补谁 ----
 # 这里用 start 而不是 restart：start 对健康的服务是空操作，
 # 不会把正在做检测的用户踢下线。
-"$OPS_DIR/svc.sh" start
+#
+# 2026-09-03 起改调 boot_all.sh：原先只拉 svc.sh 管的三个服务
+# （8801/5002/5003），nginx、asthmaguard 前后端、SPT 都在覆盖范围外，
+# WSL 实例重启后这些全是停的，每次都要人工补。boot_all 同样是幂等的，
+# 已健康的服务一律跳过，所以换过来不会增加任何打断风险。
+if [ -x "$OPS_DIR/boot_all.sh" ]; then
+    "$OPS_DIR/boot_all.sh"
+else
+    # 兜底：boot_all 不在就退回原来的行为，至少把主服务拉起来
+    echo "boot_all.sh 缺失，回退到 svc.sh start"
+    "$OPS_DIR/svc.sh" start
+fi
 rc=$?
 echo "autostart 结束 rc=$rc"
 exit "$rc"

@@ -1,0 +1,24 @@
+# >>> psy-svc daily restart >>>
+# 每天 05:00 重启 8801 / 5002 / 5003 三个服务。
+# CRON_TZ 显式声明时区：cron 默认用系统时区，写明了就不会因为
+# 以后改时区而悄悄偏移（本机为 Asia/Shanghai）。
+CRON_TZ=Asia/Shanghai
+0 5 * * * /usr/bin/env bash /home/lsz/webapp/ops/daily_restart.sh >> /home/lsz/webapp/logs/cron.log 2>&1
+# <<< psy-svc daily restart <<<
+
+# >>> boot_all autostart >>>
+# 2026-09-03 增补。解决的问题：WSL 实例重启后，除 Docker 容器
+# （unless-stopped 会自愈）外，nginx / real_time / asthmaguard / SPT
+# 全都是停的，只能人工逐个拉起。
+#
+# @reboot：cron 守护进程启动时触发一次，覆盖 WSL 实例重启的场景。
+#   注意 systemd 在本机并未生效（PID1 是 init），所以这是最可靠的开机钩子。
+#   sleep 30 是必须的：Docker daemon 和网络栈都要时间就绪，
+#   起太早会连不上数据库，后端 worker 反复重启。
+@reboot sleep 30 && SVC_INVOKER=cron-reboot /usr/bin/env bash /home/lsz/webapp/ops/boot_all.sh >> /home/lsz/webapp/logs/cron.log 2>&1
+
+# 每 10 分钟自愈巡检：进程 OOM 被杀、模型加载失败等情况下自动补起来。
+#   boot_all 是幂等的，健康时整轮不到 1 秒且不碰任何进程，
+#   所以这个频率不会造成负担，也不会打断在线用户。
+*/10 * * * * SVC_INVOKER=cron-watchdog /usr/bin/env bash /home/lsz/webapp/ops/boot_all.sh >> /home/lsz/webapp/logs/watchdog.log 2>&1
+# <<< boot_all autostart <<<
